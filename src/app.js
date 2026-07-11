@@ -2556,7 +2556,17 @@
     document.querySelectorAll('.nav-item').forEach(function (btn) {
       btn.addEventListener('click', function () { switchTab(btn.getAttribute('data-tab')); });
     });
-    el('menuBtn').addEventListener('click', function () { el('sidebar').classList.toggle('open'); });
+    el('menuBtn').addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      el('sidebar').classList.toggle('open');
+    });
+    // tap outside the drawer closes it (the ::after backdrop is part of the sidebar,
+    // so clicks on the dimmed area land on the sidebar itself — check the target)
+    document.addEventListener('click', function (ev) {
+      var sb = el('sidebar');
+      if (!sb.classList.contains('open')) return;
+      if (ev.target === sb || !sb.contains(ev.target)) sb.classList.remove('open');
+    });
 
     var skuSearchTimer = null;
     el('skuSearch').addEventListener('input', function () {

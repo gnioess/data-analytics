@@ -199,7 +199,7 @@ button{font-family:inherit;}
   box-shadow:0 2px 8px -2px color-mix(in srgb, var(--series-1) 55%, transparent);
 }
 .seg-btn:focus-visible{outline:2px solid var(--series-1);outline-offset:1px;}
-.filter-group{display:flex;flex-direction:column;gap:6px;}
+.filter-group{display:flex;flex-direction:column;gap:6px;min-width:0;max-width:100%;}
 .filter-group .fg-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);font-weight:700;}
 .filter-bar{
   display:flex;gap:24px;flex-wrap:wrap;margin-bottom:20px;padding:14px 16px;
@@ -310,13 +310,16 @@ button{font-family:inherit;}
   padding:18px;overflow-x:auto;margin-bottom:14px;box-shadow:var(--card-shadow);
   transition:transform .25s var(--ease-out), box-shadow .25s var(--ease-out), opacity .25s var(--ease-out), filter .25s var(--ease-out);
 }
-/* chart focus: hovering a chart card lifts it and gently recedes its grid siblings */
-.card:has(.chart-wrap):hover{
-  transform:translateY(-3px) scale(1.004);
-  box-shadow:var(--card-shadow-hover);
-  z-index:2;position:relative;
+/* chart focus: hovering a chart card lifts it and gently recedes its grid siblings.
+   Only on real hover devices — on touch, taps would leave cards stuck dimmed. */
+@media (hover:hover){
+  .card:has(.chart-wrap):hover{
+    transform:translateY(-3px) scale(1.004);
+    box-shadow:var(--card-shadow-hover);
+    z-index:2;position:relative;
+  }
+  .grid-2:has(.card:hover) .card:not(:hover){opacity:.55;filter:saturate(.8);}
 }
-.grid-2:has(.card:hover) .card:not(:hover){opacity:.55;filter:saturate(.8);}
 .card h3{margin:0 0 3px;font-size:14px;font-weight:700;letter-spacing:-0.01em;}
 .card .cap{color:var(--text-muted);font-size:12px;margin:0 0 14px;}
 table{border-collapse:collapse;width:100%;font-size:12.5px;white-space:nowrap;}
@@ -407,6 +410,29 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
   .main{padding:16px;}
   .topbar{margin:0 -16px 16px;padding:12px 16px 10px;}
   #menuBtn{display:inline-flex;}
+  /* two KPI tiles per row instead of one tall column */
+  .kpi-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
+  .tile{padding:13px 13px 12px;}
+  .tile .value{font-size:19px;}
+  .tile .tile-top{margin-bottom:8px;}
+  .card{padding:14px;border-radius:12px;}
+  .filter-bar{gap:14px;padding:12px;}
+  .filter-group{flex:1 1 100%;}
+  .topbar h2{font-size:17px;}
+}
+/* comfortable touch targets on coarse pointers */
+@media (pointer:coarse){
+  .seg-btn{padding:9px 13px;}
+  .nav-item{padding:12px;}
+  .segmented.scroll{-webkit-overflow-scrolling:touch;}
+}
+/* dim backdrop behind the drawer sidebar on phones; tapping it closes the menu (JS) */
+@media (max-width:760px){
+  .sidebar.open::after{
+    content:"";position:fixed;left:var(--sidebar-w);top:0;right:0;bottom:0;
+    background:rgba(0,0,0,.35);animation:fadeIn .2s var(--ease-out);
+  }
+  @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
 }
 </style>
 </head>
