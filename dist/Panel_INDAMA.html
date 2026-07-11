@@ -523,6 +523,28 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
   var META_CHATARRA_PLANTA = 0.046;
 
+  // Reference targets seen identically in both sample workbooks' "no borrar"/"Metas"
+  // sheets. Some monthly exports (e.g. BD_REPORTE_OPERACIONES.xlsx) don't include that
+  // table at all — when a workbook has no meta table of its own, fall back to these
+  // instead of leaving every machine blank. The source workbook's own table, when
+  // present, always wins; this only fills in for a workbook that has none.
+  var FALLBACK_CHATARRA_META = {
+    'Perfiladora 1': 0.045, 'Perfiladora 2': 0.027, 'Perfiladora 4': 0.012, 'Perfiladora 5': 0.024,
+    'Perfiladora 7': 0.012, 'Tubera 2': 0.025, 'Tubera 4': 0.045, 'Tubera 5': 0.02
+  };
+  var FALLBACK_OEE_META = {
+    'Perfiladora 1': [0.21, 0.2, 0.17, 0.22, 0.15, 0.15, 0.18, 0.15, 0.17, 0.19, 0.17, 0.21],
+    'Perfiladora 2': [0.36, 0.42, 0.39, 0.4, 0.42, 0.38, 0.36, 0.35, 0.36, 0.39, 0.38, 0.37],
+    'Perfiladora 4': [0.26, 0.26, 0.26, 0.26, 0.26, 0.26, 0.26, 0.26, 0.26, 0.26, 0.26, 0.26],
+    'Perfiladora 5': [0.52, 0.51, 0.52, 0.52, 0.52, 0.51, 0.52, 0.51, 0.51, 0.52, 0.52, 0.52],
+    'Perfiladora 7': [0.53, 0.53, 0.53, 0.53, 0.53, 0.53, 0.53, 0.53, 0.53, 0.53, 0.53, 0.53],
+    'Tubera 2': [0.56, 0.55, 0.59, 0.59, 0.57, 0.58, 0.57, 0.53, 0.55, 0.57, 0.59, 0.55],
+    'Tubera 4': [0.26, 0.19, 0.19, 0.25, 0.21, 0.17, 0.26, 0.14, 0.18, 0.2, 0.18, 0.23],
+    'Tubera 5': [0.56, 0.55, 0.56, 0.57, 0.56, 0.56, 0.54, 0.52, 0.55, 0.53, 0.57, 0.52],
+    'OEE Planta': [0.514, 0.517, 0.526, 0.529, 0.523, 0.531, 0.513, 0.501, 0.514, 0.514, 0.531, 0.504]
+  };
+  var MACHINE_CODE_FALLBACK_PREFIX = { 'Perfiladora': 'PE', 'Tubera': 'TB' };
+
   var BOBINAS_LABELS = {
     desorillado: '__Kg Desorillado - Bobinas Cortadas + Flejes 2ª Pasada',
     bobinasCortadas: '__Cantidad Bobinas Cortadas',
@@ -643,7 +665,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var cAno = idx['ano'], cMes = idx['mes'], cMaq = idx['nombremaquina'],
       cFecha = idx['fecha'], cLargo = idx['largo'], cCant = idx['cantproducida'],
       cKgReal = idx['cantkgreal'], cTotalUE = idx['totalunest'], cEsp = idx['espesor'],
-      cClas = idx['clasificacionprod1'];
+      cClas = idx['clasificacionprod1'], cCodMaq = idx['codmaq'];
     if (cAno == null || cMes == null || cMaq == null) return out;
     for (var r = 1; r < aoa.length; r++) {
       var row = aoa[r];
@@ -657,6 +679,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         anio: toNum(row[cAno]),
         mes: toNum(row[cMes]),
         maquina: maq,
+        codigo: cCodMaq != null ? trimStr(row[cCodMaq]) : '',
         fecha: cFecha != null ? row[cFecha] : null,
         largo: cLargo != null ? toNum(row[cLargo]) : null,
         cantProducida: cCant != null ? toNum(row[cCant]) : null,
@@ -945,11 +968,25 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var pptoVales = wsPptoVales ? parsePptoValesConsumo(sheetToAOA(wsPptoVales)) : {};
     var metasCandidates = [wsMetas, wsNoBorrar].filter(Boolean).map(sheetToAOA);
     var metas = parseMetas(metasCandidates);
+    if (!Object.keys(metas.chatarraMeta).length) metas.chatarraMeta = FALLBACK_CHATARRA_META;
+    if (!Object.keys(metas.oeeMeta).length) {
+      var fbOee = {};
+      Object.keys(FALLBACK_OEE_META).forEach(function (k) {
+        fbOee[k] = {};
+        MESES.forEach(function (m, i) { fbOee[k][m] = FALLBACK_OEE_META[k][i]; });
+      });
+      metas.oeeMeta = fbOee;
+    }
     var rechazoTabla = wsNoBorrar ? parseRechazoTabla(sheetToAOA(wsNoBorrar)) : [];
 
     var machines = oee.machines.length ? oee.machines : Array.from(new Set(
       produccion.filter(function (p) { return isMachineLike(p.maquina); }).map(function (p) { return p.maquina; })
     ));
+
+    var machineCodes = {};
+    produccion.forEach(function (p) {
+      if (p.codigo && !machineCodes[p.maquina]) machineCodes[p.maquina] = p.codigo;
+    });
 
     var groupSet = {};
     produccion.concat(chatarra).forEach(function (p) {
@@ -964,8 +1001,16 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       produccion: produccion, chatarra: chatarra, vales: vales, bobinasM: bobinasM,
       prodResumenAnu: prodResumenAnu, oee: oee, horasAtraso: horasAtraso,
       pptoProduccion: pptoProduccion, pptoVales: pptoVales, metas: metas,
-      rechazoTabla: rechazoTabla, machines: machines, groupMachines: groupMachines, years: years
+      rechazoTabla: rechazoTabla, machines: machines, groupMachines: groupMachines, years: years,
+      machineCodes: machineCodes
     };
+  }
+
+  function machineShortLabel(name, codesMap) {
+    if (codesMap && codesMap[name]) return codesMap[name];
+    var m = /^(Perfiladora|Tubera)\s*([0-9]+)/i.exec(name);
+    if (m && MACHINE_CODE_FALLBACK_PREFIX[m[1]]) return MACHINE_CODE_FALLBACK_PREFIX[m[1]] + m[2];
+    return name;
   }
 
   /* =========================================================================
@@ -1863,7 +1908,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var maquinas = det.columnas.map(function (c) { return c.maquina; });
     ['mesLabel', 'mesLabel2', 'mesLabel3', 'mesLabel4'].forEach(function (id) { el(id).textContent = mesNombre; });
 
-    var maquinasCortas = maquinas.map(function (m) { return m.replace('Perfiladora', 'P').replace('Tubera', 'T'); });
+    var maquinasCortas = maquinas.map(function (m) { return m === 'Braner' ? 'Braner' : machineShortLabel(m, STATE.data.machineCodes); });
     renderBulletChart(el('chartMesProd'), {
       categories: maquinasCortas,
       values: det.columnas.map(function (c) { return c.prodEstandar; }),
@@ -2033,7 +2078,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     });
 
     var machines = STATE.data.machines;
-    renderSegmented('machineSeg', machines.map(function (m) { return { value: m, label: m.replace('Perfiladora', 'P.').replace('Tubera', 'T.') }; }), STATE.machine, function (val) {
+    renderSegmented('machineSeg', machines.map(function (m) { return { value: m, label: machineShortLabel(m, STATE.data.machineCodes) }; }), STATE.machine, function (val) {
       STATE.machine = val;
       renderDetalleAnio(STATE.year, STATE.machine);
     });
