@@ -170,7 +170,7 @@
       cFecha = idx['fecha'], cLargo = idx['largo'], cCant = idx['cantproducida'],
       cKgReal = idx['cantkgreal'], cTotalUE = idx['totalunest'], cEsp = idx['espesor'],
       cClas = idx['clasificacionprod1'], cCodMaq = idx['codmaq'],
-      cDesc = idx['descripcionarticulo'], cFamilia = idx['familia'];
+      cDesc = idx['descripcionarticulo'], cFamilia = idx['familia'], cSku = idx['codigoarticulo'];
     if (cAno == null || cMes == null || cMaq == null) return out;
     for (var r = 1; r < aoa.length; r++) {
       var row = aoa[r];
@@ -193,7 +193,8 @@
         espesor: cEsp != null ? toNum(row[cEsp]) : null,
         clasif: cClas != null ? trimStr(row[cClas]) : '',
         descripcion: cDesc != null ? trimStr(row[cDesc]) : '',
-        familia: cFamilia != null ? trimStr(row[cFamilia]) : ''
+        familia: cFamilia != null ? trimStr(row[cFamilia]) : '',
+        sku: cSku != null ? trimStr(row[cSku]) : ''
       });
     }
     return out;
@@ -204,7 +205,8 @@
     if (!aoa || aoa.length < 2) return out;
     var idx = headerIndex(aoa[0]);
     var cAno = idx['ano'], cMes = idx['mes'], cMaq = idx['nommaquina'], cTotalUE = idx['totalunest'],
-      cFecha = idx['fechacontprod'], cFamilia = idx['familiacodsolic'];
+      cFecha = idx['fechacontprod'], cFamilia = idx['familiacodsolic'],
+      cCodSolic = idx['codsolic'], cDescSolic = idx['descripcodsolic'];
     if (cAno == null || cMes == null || cMaq == null) return out;
     for (var r = 1; r < aoa.length; r++) {
       var row = aoa[r];
@@ -217,7 +219,9 @@
         mes: toNum(row[cMes]),
         maquina: maq,
         totalUnEst: cTotalUE != null ? toNum(row[cTotalUE]) : null,
-        familia: cFamilia != null ? trimStr(row[cFamilia]) : ''
+        familia: cFamilia != null ? trimStr(row[cFamilia]) : '',
+        codSolic: cCodSolic != null ? trimStr(row[cCodSolic]) : '',
+        descripcion: cDescSolic != null ? trimStr(row[cDescSolic]) : ''
       });
     }
     return out;
@@ -988,11 +992,52 @@
       };
     }
 
+    /* ---- Buscador de SKU: producción vs. chatarra por SKU × máquina ---- */
+    // links Producción.Código Artículo <-> Chatarra.Cód.Solic. (the requisition's
+    // article code) — verified ~95% code overlap between the two sheets.
+    function skuBuscador(anio, opts) {
+      opts = opts || {};
+      var mesN = opts.mes ? MESES.indexOf(opts.mes) + 1 : null;
+      var prodRows = D.produccion.filter(function (p) {
+        return p.anio === anio && p.sku && (mesN == null || p.mes === mesN) && (!opts.maquina || p.maquina === opts.maquina);
+      });
+      var chatRows = D.chatarra.filter(function (c) {
+        return c.anio === anio && c.codSolic && (mesN == null || c.mes === mesN) && (!opts.maquina || c.maquina === opts.maquina);
+      });
+      var map = {};
+      prodRows.forEach(function (p) {
+        var key = p.sku + '|' + p.maquina;
+        if (!map[key]) map[key] = { sku: p.sku, descripcion: p.descripcion, familia: p.familia, maquina: p.maquina, prodKg: 0, chatKg: 0 };
+        if (isNum(p.totalUnEst)) map[key].prodKg += p.totalUnEst;
+      });
+      chatRows.forEach(function (c) {
+        var key = c.codSolic + '|' + c.maquina;
+        if (!map[key]) map[key] = { sku: c.codSolic, descripcion: c.descripcion, familia: c.familia, maquina: c.maquina, prodKg: 0, chatKg: 0 };
+        if (isNum(c.totalUnEst)) map[key].chatKg += c.totalUnEst;
+      });
+      var rows = Object.keys(map).map(function (k) {
+        var r = map[k];
+        r.prodKg = zeroToNull(r.prodKg);
+        r.chatKg = zeroToNull(r.chatKg);
+        r.chatPct = ratio(r.chatKg, sum([r.prodKg, r.chatKg].filter(isNum)));
+        return r;
+      });
+      if (opts.query) {
+        var q = normKey(opts.query);
+        rows = rows.filter(function (r) {
+          return normKey(String(r.sku)).indexOf(q) >= 0 || normKey(r.descripcion).indexOf(q) >= 0;
+        });
+      }
+      rows.sort(function (a, b) { return (b.prodKg || 0) - (a.prodKg || 0); });
+      return rows;
+    }
+
     return {
       resumenPlanta: resumenPlanta, kpiHeader: kpiHeader, presupuesto: presupuesto,
       detalleMes: detalleMes, detalleAnio: detalleAnio, espesorAnalysis: espesorAnalysis,
       pptoTotalVal: pptoTotalVal, oeeMetaVal: oeeMetaVal,
-      torreControl: torreControl, aporteOEEPorMaquina: aporteOEEPorMaquina, productMix: productMix
+      torreControl: torreControl, aporteOEEPorMaquina: aporteOEEPorMaquina, productMix: productMix,
+      skuBuscador: skuBuscador
     };
   }
 
@@ -1534,7 +1579,7 @@
    * App wiring
    * ======================================================================= */
 
-  var STATE = { data: null, engine: null, year: null, month: null, machine: null };
+  var STATE = { data: null, engine: null, year: null, month: null, machine: null, sku: { maquina: null, mes: null, query: '' } };
 
   function el(id) { return document.getElementById(id); }
 
@@ -1854,6 +1899,19 @@
       STATE.machine = val;
       renderDetalleAnio(STATE.year, STATE.machine);
     });
+
+    var skuMachineOptions = [{ value: '', label: 'Todas' }].concat(
+      machines.map(function (m) { return { value: m, label: machineShortLabel(m, STATE.data.machineCodes) }; })
+    );
+    renderSegmented('skuMachineSeg', skuMachineOptions, STATE.sku.maquina || '', function (val) {
+      STATE.sku.maquina = val || null;
+      renderSkuBuscador();
+    });
+    var skuMonthOptions = [{ value: '', label: 'Todos' }].concat(MESES.map(function (m, i) { return { value: m, label: MESES_ABBR[i] }; }));
+    renderSegmented('skuMonthSeg', skuMonthOptions, STATE.sku.mes || '', function (val) {
+      STATE.sku.mes = val || null;
+      renderSkuBuscador();
+    });
   }
 
   function pickDefaultMonth(anio) {
@@ -1940,6 +1998,29 @@
     });
   }
 
+  var SKU_ROW_LIMIT = 300;
+  function renderSkuBuscador() {
+    var rows = STATE.engine.skuBuscador(STATE.year, STATE.sku);
+    var total = rows.length;
+    var shown = rows.slice(0, SKU_ROW_LIMIT);
+    el('skuResultCount').textContent = total === 0 ? 'Sin resultados' :
+      (total > SKU_ROW_LIMIT ? 'Mostrando ' + SKU_ROW_LIMIT + ' de ' + fmtInt(total) + ' resultados — refina la búsqueda para ver más' : fmtInt(total) + ' resultado' + (total === 1 ? '' : 's'));
+
+    var html = '<table class="wide"><thead><tr><th>SKU</th><th>Descripción</th><th>Familia</th><th>Máquina</th><th>Producción (kg)</th><th>Chatarra (kg)</th><th>Chatarra %</th></tr></thead><tbody>';
+    shown.forEach(function (r) {
+      html += '<tr>' +
+        '<td>' + escapeHtml(r.sku) + '</td>' +
+        '<td>' + escapeHtml(r.descripcion || '-') + '</td>' +
+        '<td>' + escapeHtml(r.familia || '-') + '</td>' +
+        '<td>' + escapeHtml(machineShortLabel(r.maquina, STATE.data.machineCodes)) + '</td>' +
+        tdv(r.prodKg, fmtInt) + tdv(r.chatKg, fmtInt) +
+        tdv(r.chatPct, function (v) { return fmtPct(v, 2); }) +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    el('skuTable').innerHTML = html;
+  }
+
   function renderAll() {
     var anio = STATE.year;
     var resumen = renderResumen(anio);
@@ -1953,6 +2034,7 @@
     renderEspesor(anio);
     renderInsumos();
     renderProductos(anio);
+    renderSkuBuscador();
     el('updatedLabel').textContent = 'Año ' + anio + '\n' + new Date().toLocaleString('es-CL');
   }
 
@@ -1961,7 +2043,8 @@
     maquina: { title: 'Detalle por Máquina', crumb: 'Producción, chatarra, costos y OEE por máquina' },
     espesor: { title: 'Análisis por Espesor', crumb: 'Mix de producción por espesor' },
     insumos: { title: 'Costos e Insumos', crumb: 'Gasto y variación de precio por insumo' },
-    productos: { title: 'Mix de Productos', crumb: 'Producción y chatarra por producto y familia' }
+    productos: { title: 'Mix de Productos', crumb: 'Producción y chatarra por producto y familia' },
+    sku: { title: 'Buscador SKU', crumb: 'Producción y chatarra por SKU, máquina y mes' }
   };
 
   function switchTab(tab) {
@@ -2030,6 +2113,16 @@
       btn.addEventListener('click', function () { switchTab(btn.getAttribute('data-tab')); });
     });
     el('menuBtn').addEventListener('click', function () { el('sidebar').classList.toggle('open'); });
+
+    var skuSearchTimer = null;
+    el('skuSearch').addEventListener('input', function () {
+      var val = this.value;
+      clearTimeout(skuSearchTimer);
+      skuSearchTimer = setTimeout(function () {
+        STATE.sku.query = val;
+        renderSkuBuscador();
+      }, 150);
+    });
   }
 
   document.addEventListener('DOMContentLoaded', wireEvents);

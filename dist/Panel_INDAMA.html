@@ -161,6 +161,11 @@ button{font-family:inherit;}
   border-radius:9px;padding:8px 12px;cursor:pointer;font-weight:600;font-size:12.5px;
 }
 .btn.primary{background:var(--series-1);color:#fff;border-color:transparent;}
+.search-input{
+  font:inherit;font-size:13px;background:var(--surface-2);color:var(--text-primary);border:1px solid var(--border);
+  border-radius:9px;padding:8px 12px;width:100%;
+}
+.search-input:focus{outline:2px solid var(--series-1);outline-offset:1px;}
 
 /* ---------- Drop zone ---------- */
 #dzScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
@@ -340,6 +345,10 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
       <button class="nav-item" data-tab="productos">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"></rect><rect x="13" y="3" width="8" height="8" rx="1.5"></rect><rect x="3" y="13" width="8" height="8" rx="1.5"></rect><rect x="13" y="13" width="8" height="8" rx="1.5"></rect></svg>
         <span>Mix de Productos</span>
+      </button>
+      <button class="nav-item" data-tab="sku">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Buscador SKU</span>
       </button>
     </nav>
     <div class="sidebar-foot">
@@ -563,6 +572,31 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
       </div>
     </section>
 
+    <!-- ================= TAB: Buscador SKU ================= -->
+    <section id="tab-sku" class="tab-panel">
+      <div class="section">
+        <div class="section-title"><span>Buscador de SKU</span><span class="line"></span></div>
+        <div class="filter-bar">
+          <div class="filter-group" style="flex:1 1 240px;">
+            <span class="fg-label">Buscar SKU o descripción</span>
+            <input type="text" id="skuSearch" class="search-input" placeholder="Ej: 625066022400 o &quot;Perfil L&quot;">
+          </div>
+          <div class="filter-group">
+            <span class="fg-label">Máquina</span>
+            <div class="segmented scroll" id="skuMachineSeg"></div>
+          </div>
+          <div class="filter-group">
+            <span class="fg-label">Mes</span>
+            <div class="segmented scroll" id="skuMonthSeg"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="cap" id="skuResultCount" style="margin-bottom:10px;"></div>
+          <div id="skuTable"></div>
+        </div>
+      </div>
+    </section>
+
     <footer class="app-footer">Panel generado localmente en tu navegador a partir del Excel cargado. Ningún dato sale de este equipo.</footer>
   </main>
 </div>
@@ -752,7 +786,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       cFecha = idx['fecha'], cLargo = idx['largo'], cCant = idx['cantproducida'],
       cKgReal = idx['cantkgreal'], cTotalUE = idx['totalunest'], cEsp = idx['espesor'],
       cClas = idx['clasificacionprod1'], cCodMaq = idx['codmaq'],
-      cDesc = idx['descripcionarticulo'], cFamilia = idx['familia'];
+      cDesc = idx['descripcionarticulo'], cFamilia = idx['familia'], cSku = idx['codigoarticulo'];
     if (cAno == null || cMes == null || cMaq == null) return out;
     for (var r = 1; r < aoa.length; r++) {
       var row = aoa[r];
@@ -775,7 +809,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         espesor: cEsp != null ? toNum(row[cEsp]) : null,
         clasif: cClas != null ? trimStr(row[cClas]) : '',
         descripcion: cDesc != null ? trimStr(row[cDesc]) : '',
-        familia: cFamilia != null ? trimStr(row[cFamilia]) : ''
+        familia: cFamilia != null ? trimStr(row[cFamilia]) : '',
+        sku: cSku != null ? trimStr(row[cSku]) : ''
       });
     }
     return out;
@@ -786,7 +821,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     if (!aoa || aoa.length < 2) return out;
     var idx = headerIndex(aoa[0]);
     var cAno = idx['ano'], cMes = idx['mes'], cMaq = idx['nommaquina'], cTotalUE = idx['totalunest'],
-      cFecha = idx['fechacontprod'], cFamilia = idx['familiacodsolic'];
+      cFecha = idx['fechacontprod'], cFamilia = idx['familiacodsolic'],
+      cCodSolic = idx['codsolic'], cDescSolic = idx['descripcodsolic'];
     if (cAno == null || cMes == null || cMaq == null) return out;
     for (var r = 1; r < aoa.length; r++) {
       var row = aoa[r];
@@ -799,7 +835,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         mes: toNum(row[cMes]),
         maquina: maq,
         totalUnEst: cTotalUE != null ? toNum(row[cTotalUE]) : null,
-        familia: cFamilia != null ? trimStr(row[cFamilia]) : ''
+        familia: cFamilia != null ? trimStr(row[cFamilia]) : '',
+        codSolic: cCodSolic != null ? trimStr(row[cCodSolic]) : '',
+        descripcion: cDescSolic != null ? trimStr(row[cDescSolic]) : ''
       });
     }
     return out;
@@ -1570,11 +1608,52 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       };
     }
 
+    /* ---- Buscador de SKU: producción vs. chatarra por SKU × máquina ---- */
+    // links Producción.Código Artículo <-> Chatarra.Cód.Solic. (the requisition's
+    // article code) — verified ~95% code overlap between the two sheets.
+    function skuBuscador(anio, opts) {
+      opts = opts || {};
+      var mesN = opts.mes ? MESES.indexOf(opts.mes) + 1 : null;
+      var prodRows = D.produccion.filter(function (p) {
+        return p.anio === anio && p.sku && (mesN == null || p.mes === mesN) && (!opts.maquina || p.maquina === opts.maquina);
+      });
+      var chatRows = D.chatarra.filter(function (c) {
+        return c.anio === anio && c.codSolic && (mesN == null || c.mes === mesN) && (!opts.maquina || c.maquina === opts.maquina);
+      });
+      var map = {};
+      prodRows.forEach(function (p) {
+        var key = p.sku + '|' + p.maquina;
+        if (!map[key]) map[key] = { sku: p.sku, descripcion: p.descripcion, familia: p.familia, maquina: p.maquina, prodKg: 0, chatKg: 0 };
+        if (isNum(p.totalUnEst)) map[key].prodKg += p.totalUnEst;
+      });
+      chatRows.forEach(function (c) {
+        var key = c.codSolic + '|' + c.maquina;
+        if (!map[key]) map[key] = { sku: c.codSolic, descripcion: c.descripcion, familia: c.familia, maquina: c.maquina, prodKg: 0, chatKg: 0 };
+        if (isNum(c.totalUnEst)) map[key].chatKg += c.totalUnEst;
+      });
+      var rows = Object.keys(map).map(function (k) {
+        var r = map[k];
+        r.prodKg = zeroToNull(r.prodKg);
+        r.chatKg = zeroToNull(r.chatKg);
+        r.chatPct = ratio(r.chatKg, sum([r.prodKg, r.chatKg].filter(isNum)));
+        return r;
+      });
+      if (opts.query) {
+        var q = normKey(opts.query);
+        rows = rows.filter(function (r) {
+          return normKey(String(r.sku)).indexOf(q) >= 0 || normKey(r.descripcion).indexOf(q) >= 0;
+        });
+      }
+      rows.sort(function (a, b) { return (b.prodKg || 0) - (a.prodKg || 0); });
+      return rows;
+    }
+
     return {
       resumenPlanta: resumenPlanta, kpiHeader: kpiHeader, presupuesto: presupuesto,
       detalleMes: detalleMes, detalleAnio: detalleAnio, espesorAnalysis: espesorAnalysis,
       pptoTotalVal: pptoTotalVal, oeeMetaVal: oeeMetaVal,
-      torreControl: torreControl, aporteOEEPorMaquina: aporteOEEPorMaquina, productMix: productMix
+      torreControl: torreControl, aporteOEEPorMaquina: aporteOEEPorMaquina, productMix: productMix,
+      skuBuscador: skuBuscador
     };
   }
 
@@ -2116,7 +2195,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
    * App wiring
    * ======================================================================= */
 
-  var STATE = { data: null, engine: null, year: null, month: null, machine: null };
+  var STATE = { data: null, engine: null, year: null, month: null, machine: null, sku: { maquina: null, mes: null, query: '' } };
 
   function el(id) { return document.getElementById(id); }
 
@@ -2436,6 +2515,19 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       STATE.machine = val;
       renderDetalleAnio(STATE.year, STATE.machine);
     });
+
+    var skuMachineOptions = [{ value: '', label: 'Todas' }].concat(
+      machines.map(function (m) { return { value: m, label: machineShortLabel(m, STATE.data.machineCodes) }; })
+    );
+    renderSegmented('skuMachineSeg', skuMachineOptions, STATE.sku.maquina || '', function (val) {
+      STATE.sku.maquina = val || null;
+      renderSkuBuscador();
+    });
+    var skuMonthOptions = [{ value: '', label: 'Todos' }].concat(MESES.map(function (m, i) { return { value: m, label: MESES_ABBR[i] }; }));
+    renderSegmented('skuMonthSeg', skuMonthOptions, STATE.sku.mes || '', function (val) {
+      STATE.sku.mes = val || null;
+      renderSkuBuscador();
+    });
   }
 
   function pickDefaultMonth(anio) {
@@ -2522,6 +2614,29 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     });
   }
 
+  var SKU_ROW_LIMIT = 300;
+  function renderSkuBuscador() {
+    var rows = STATE.engine.skuBuscador(STATE.year, STATE.sku);
+    var total = rows.length;
+    var shown = rows.slice(0, SKU_ROW_LIMIT);
+    el('skuResultCount').textContent = total === 0 ? 'Sin resultados' :
+      (total > SKU_ROW_LIMIT ? 'Mostrando ' + SKU_ROW_LIMIT + ' de ' + fmtInt(total) + ' resultados — refina la búsqueda para ver más' : fmtInt(total) + ' resultado' + (total === 1 ? '' : 's'));
+
+    var html = '<table class="wide"><thead><tr><th>SKU</th><th>Descripción</th><th>Familia</th><th>Máquina</th><th>Producción (kg)</th><th>Chatarra (kg)</th><th>Chatarra %</th></tr></thead><tbody>';
+    shown.forEach(function (r) {
+      html += '<tr>' +
+        '<td>' + escapeHtml(r.sku) + '</td>' +
+        '<td>' + escapeHtml(r.descripcion || '-') + '</td>' +
+        '<td>' + escapeHtml(r.familia || '-') + '</td>' +
+        '<td>' + escapeHtml(machineShortLabel(r.maquina, STATE.data.machineCodes)) + '</td>' +
+        tdv(r.prodKg, fmtInt) + tdv(r.chatKg, fmtInt) +
+        tdv(r.chatPct, function (v) { return fmtPct(v, 2); }) +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    el('skuTable').innerHTML = html;
+  }
+
   function renderAll() {
     var anio = STATE.year;
     var resumen = renderResumen(anio);
@@ -2535,6 +2650,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     renderEspesor(anio);
     renderInsumos();
     renderProductos(anio);
+    renderSkuBuscador();
     el('updatedLabel').textContent = 'Año ' + anio + '\n' + new Date().toLocaleString('es-CL');
   }
 
@@ -2543,7 +2659,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     maquina: { title: 'Detalle por Máquina', crumb: 'Producción, chatarra, costos y OEE por máquina' },
     espesor: { title: 'Análisis por Espesor', crumb: 'Mix de producción por espesor' },
     insumos: { title: 'Costos e Insumos', crumb: 'Gasto y variación de precio por insumo' },
-    productos: { title: 'Mix de Productos', crumb: 'Producción y chatarra por producto y familia' }
+    productos: { title: 'Mix de Productos', crumb: 'Producción y chatarra por producto y familia' },
+    sku: { title: 'Buscador SKU', crumb: 'Producción y chatarra por SKU, máquina y mes' }
   };
 
   function switchTab(tab) {
@@ -2612,6 +2729,16 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       btn.addEventListener('click', function () { switchTab(btn.getAttribute('data-tab')); });
     });
     el('menuBtn').addEventListener('click', function () { el('sidebar').classList.toggle('open'); });
+
+    var skuSearchTimer = null;
+    el('skuSearch').addEventListener('input', function () {
+      var val = this.value;
+      clearTimeout(skuSearchTimer);
+      skuSearchTimer = setTimeout(function () {
+        STATE.sku.query = val;
+        renderSkuBuscador();
+      }, 150);
+    });
   }
 
   document.addEventListener('DOMContentLoaded', wireEvents);

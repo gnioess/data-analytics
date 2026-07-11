@@ -161,6 +161,11 @@ button{font-family:inherit;}
   border-radius:9px;padding:8px 12px;cursor:pointer;font-weight:600;font-size:12.5px;
 }
 .btn.primary{background:var(--series-1);color:#fff;border-color:transparent;}
+.search-input{
+  font:inherit;font-size:13px;background:var(--surface-2);color:var(--text-primary);border:1px solid var(--border);
+  border-radius:9px;padding:8px 12px;width:100%;
+}
+.search-input:focus{outline:2px solid var(--series-1);outline-offset:1px;}
 
 /* ---------- Drop zone ---------- */
 #dzScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
@@ -340,6 +345,10 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
       <button class="nav-item" data-tab="productos">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"></rect><rect x="13" y="3" width="8" height="8" rx="1.5"></rect><rect x="3" y="13" width="8" height="8" rx="1.5"></rect><rect x="13" y="13" width="8" height="8" rx="1.5"></rect></svg>
         <span>Mix de Productos</span>
+      </button>
+      <button class="nav-item" data-tab="sku">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Buscador SKU</span>
       </button>
     </nav>
     <div class="sidebar-foot">
@@ -559,6 +568,31 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
             <div class="cap">kg — top 10 familias</div>
             <div id="chartFamiliaChatarra"></div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TAB: Buscador SKU ================= -->
+    <section id="tab-sku" class="tab-panel">
+      <div class="section">
+        <div class="section-title"><span>Buscador de SKU</span><span class="line"></span></div>
+        <div class="filter-bar">
+          <div class="filter-group" style="flex:1 1 240px;">
+            <span class="fg-label">Buscar SKU o descripción</span>
+            <input type="text" id="skuSearch" class="search-input" placeholder="Ej: 625066022400 o &quot;Perfil L&quot;">
+          </div>
+          <div class="filter-group">
+            <span class="fg-label">Máquina</span>
+            <div class="segmented scroll" id="skuMachineSeg"></div>
+          </div>
+          <div class="filter-group">
+            <span class="fg-label">Mes</span>
+            <div class="segmented scroll" id="skuMonthSeg"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="cap" id="skuResultCount" style="margin-bottom:10px;"></div>
+          <div id="skuTable"></div>
         </div>
       </div>
     </section>
