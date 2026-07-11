@@ -1194,9 +1194,17 @@
       return { items: items, total: total, n80: n80 || items.length };
     }
 
-    /* ---- Buscador de SKU: producción vs. chatarra por SKU × máquina ---- */
-    // links Producción.Código Artículo <-> Chatarra.Cód.Solic. (the requisition's
-    // article code) — verified ~95% code overlap between the two sheets.
+    /* ---- Buscador de SKU: producción vs. chatarra por artículo × máquina ---- */
+    // Identity key: the article DESCRIPTION (normalized), falling back to the code
+    // when a row has no description. Producción keys articles by "Código Artículo"
+    // and Chatarra by "Cód.Solic.", and the same physical article can carry a
+    // different code on each side (verified in the source data) — joining by code
+    // split such articles into a fake "0% chatarra" production row plus a fake
+    // "100% chatarra" scrap row. Descriptions match on both sides.
+    function artKey(descripcion, codigo) {
+      var d = normKey(descripcion);
+      return d || String(codigo);
+    }
     function skuBuscador(anio, opts) {
       opts = opts || {};
       var mesN = opts.mes ? MESES.indexOf(opts.mes) + 1 : null;
@@ -1206,21 +1214,19 @@
       var chatRows = D.chatarra.filter(function (c) {
         return c.anio === anio && c.codSolic && (mesN == null || c.mes === mesN) && (!opts.maquina || c.maquina === opts.maquina);
       });
-      // one row per SKU × máquina — production and its corresponding chatarra don't always
-      // land in the exact same "Mes" cell (the scrap requisition can be logged a few days
-      // after the production run, sometimes crossing a month boundary), so grouping by
-      // month as well as sku+máquina used to split one article's totals into two incomplete
-      // rows (production with fake "0% chatarra" and chatarra with fake "100% chatarra").
-      // Grouping by sku+máquina only keeps both sides correctly combined; the "Mes" filter
-      // above already scopes both prodRows/chatRows to a single month when one is selected.
+      // one row per artículo × máquina — production and its corresponding chatarra don't
+      // always land in the exact same "Mes" cell (the scrap requisition can be logged a
+      // few days after the production run, sometimes crossing a month boundary), so
+      // grouping by month as well used to split one article's totals into two incomplete
+      // rows. The "Mes" filter above already scopes both sides to a single month.
       var map = {};
       prodRows.forEach(function (p) {
-        var key = p.sku + '|' + p.maquina;
+        var key = artKey(p.descripcion, p.sku) + '|' + p.maquina;
         if (!map[key]) map[key] = { sku: p.sku, descripcion: p.descripcion, familia: p.familia, maquina: p.maquina, prodKg: 0, chatKg: 0 };
         if (isNum(p.totalUnEst)) map[key].prodKg += p.totalUnEst;
       });
       chatRows.forEach(function (c) {
-        var key = c.codSolic + '|' + c.maquina;
+        var key = artKey(c.descripcion, c.codSolic) + '|' + c.maquina;
         if (!map[key]) map[key] = { sku: c.codSolic, descripcion: c.descripcion, familia: c.familia, maquina: c.maquina, prodKg: 0, chatKg: 0 };
         if (isNum(c.totalUnEst)) map[key].chatKg += c.totalUnEst;
       });
@@ -1294,27 +1300,32 @@
       var prodAll = D.produccion.filter(matchProd);
       var chatAll = D.chatarra.filter(matchChat);
 
+      // group both sides by the article's description key (same identity rule as
+      // skuBuscador) so production and scrap combine even when their codes differ
       var labelOf = {};
-      prodAll.forEach(function (p) { if (!labelOf[p.sku]) labelOf[p.sku] = p.descripcion || p.sku; });
-      chatAll.forEach(function (c) { if (!labelOf[c.codSolic]) labelOf[c.codSolic] = c.descripcion || c.codSolic; });
+      prodAll.forEach(function (p) { var k = artKey(p.descripcion, p.sku); if (!labelOf[k]) labelOf[k] = p.descripcion || String(p.sku); });
+      chatAll.forEach(function (c) { var k = artKey(c.descripcion, c.codSolic); if (!labelOf[k]) labelOf[k] = c.descripcion || String(c.codSolic); });
 
       var chatTotals = {};
-      chatAll.forEach(function (c) { chatTotals[c.codSolic] = (chatTotals[c.codSolic] || 0) + (isNum(c.totalUnEst) ? c.totalUnEst : 0); });
+      chatAll.forEach(function (c) {
+        var k = artKey(c.descripcion, c.codSolic);
+        chatTotals[k] = (chatTotals[k] || 0) + (isNum(c.totalUnEst) ? c.totalUnEst : 0);
+      });
       // every article with recorded chatarra for the current filter — no top-N cap
-      var allSkus = Object.keys(labelOf).filter(function (sku) { return (chatTotals[sku] || 0) > 0; });
-      var orderedSkus = allSkus.slice().sort(function (a, b) { return (chatTotals[b] || 0) - (chatTotals[a] || 0); });
+      var allKeys = Object.keys(labelOf).filter(function (k) { return (chatTotals[k] || 0) > 0; });
+      var orderedKeys = allKeys.slice().sort(function (a, b) { return (chatTotals[b] || 0) - (chatTotals[a] || 0); });
 
-      var series = orderedSkus.map(function (sku) {
+      var series = orderedKeys.map(function (k) {
         var months = MESES.map(function (mesNombre, i) {
           var mesN = i + 1;
-          var prodKg = sum(prodAll.filter(function (p) { return p.sku === sku && p.mes === mesN; }).map(function (p) { return p.totalUnEst; }));
-          var chatKg = sum(chatAll.filter(function (c) { return c.codSolic === sku && c.mes === mesN; }).map(function (c) { return c.totalUnEst; }));
+          var prodKg = sum(prodAll.filter(function (p) { return artKey(p.descripcion, p.sku) === k && p.mes === mesN; }).map(function (p) { return p.totalUnEst; }));
+          var chatKg = sum(chatAll.filter(function (c) { return artKey(c.descripcion, c.codSolic) === k && c.mes === mesN; }).map(function (c) { return c.totalUnEst; }));
           var total = prodKg + chatKg;
           return { mes: mesNombre, mesAbbr: MESES_ABBR[i], chatKg: chatKg, chatPct: total > 0 ? chatKg / total : null };
         });
-        return { sku: sku, label: labelOf[sku] || sku, months: months, totalChat: chatTotals[sku] || 0 };
+        return { sku: k, label: labelOf[k] || k, months: months, totalChat: chatTotals[k] || 0 };
       });
-      return { series: series, totalArticles: allSkus.length };
+      return { series: series, totalArticles: allKeys.length };
     }
 
     return {
