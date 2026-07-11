@@ -1081,15 +1081,18 @@
       opts = opts || {};
       maxArticles = maxArticles || 6;
       var q = opts.query ? normKey(opts.query) : null;
+      var mesN = opts.mes ? MESES.indexOf(opts.mes) + 1 : null;
       function matchProd(p) {
         if (p.anio !== anio || !p.sku) return false;
         if (opts.maquina && p.maquina !== opts.maquina) return false;
+        if (mesN != null && p.mes !== mesN) return false;
         if (q && normKey(String(p.sku)).indexOf(q) < 0 && normKey(p.descripcion).indexOf(q) < 0) return false;
         return true;
       }
       function matchChat(c) {
         if (c.anio !== anio || !c.codSolic) return false;
         if (opts.maquina && c.maquina !== opts.maquina) return false;
+        if (mesN != null && c.mes !== mesN) return false;
         if (q && normKey(String(c.codSolic)).indexOf(q) < 0 && normKey(c.descripcion).indexOf(q) < 0) return false;
         return true;
       }
@@ -1561,7 +1564,8 @@
     }
 
     var bandW = plotW / n;
-    var jitter = nS > 1 ? Math.min(28, bandW / (nS + 0.5)) : 0;
+    var jitterCap = n <= 1 ? 70 : 28;
+    var jitter = nS > 1 ? Math.min(jitterCap, bandW / (nS + 0.5)) : 0;
     function xBase(i) { return n <= 1 ? padL + plotW / 2 : padL + plotW * i / (n - 1); }
     function x(i, si) { return xBase(i) + (si - (nS - 1) / 2) * jitter; }
     function y(v) { return padT + plotH - (v / maxV) * plotH; }
@@ -1579,7 +1583,7 @@
       xLabelsHtml += '<text class="axis-label" x="' + xBase(i) + '" y="' + (H - 10) + '" text-anchor="middle">' + cat + '</text>';
     });
 
-    var bubblesHtml = '', centerLabelsHtml = '', nameLabelsHtml = '';
+    var bubblesHtml = '', centerLabelsHtml = '', nameLabelsHtml = '', leadersHtml = '';
     var tipId = 'tip' + chartUid;
     var bubbles = [];
     var uid = 0;
@@ -1596,6 +1600,8 @@
         }
         var tier = si % 3;
         var nameY = cy - r - 6 - tier * 11;
+        // leader line points straight up from the bubble edge to its (horizontal) name label
+        leadersHtml += '<line class="bubble-leader" data-u="' + uid + '" x1="' + cx + '" x2="' + cx + '" y1="' + (cy - r) + '" y2="' + (nameY + 3) + '" stroke="' + s.color + '"></line>';
         nameLabelsHtml += '<text class="bubble-name-label" data-u="' + uid + '" x="' + cx + '" y="' + nameY + '" text-anchor="middle" fill="' + s.color + '">' + escapeHtml(truncateLabel(s.label, 14)) + '</text>';
         bubbles.push({ uid: uid, label: s.label, cat: opts.categories[i], val: val, size: size, cx: cx, cy: cy, r: r });
       });
@@ -1608,7 +1614,7 @@
     container.innerHTML = '<div class="chart-wrap">' + legendHtml +
       '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
       '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
-      gridHtml + labelsHtml + bubblesHtml + centerLabelsHtml + nameLabelsHtml + xLabelsHtml +
+      gridHtml + labelsHtml + leadersHtml + bubblesHtml + centerLabelsHtml + nameLabelsHtml + xLabelsHtml +
       '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
 
     var tip = container.querySelector('#' + tipId);
@@ -2213,23 +2219,29 @@
   var SKU_ROW_LIMIT = 300;
   var SKU_BUBBLE_MAX_ARTICLES = 6;
   function renderSkuBuscador() {
-    var art = STATE.engine.skuArticleMonthlyTrend(STATE.year, { maquina: STATE.sku.maquina, query: STATE.sku.query }, SKU_BUBBLE_MAX_ARTICLES);
+    var art = STATE.engine.skuArticleMonthlyTrend(STATE.year, { maquina: STATE.sku.maquina, mes: STATE.sku.mes, query: STATE.sku.query }, SKU_BUBBLE_MAX_ARTICLES);
+    // when a single month is selected there is only one populated x-position — collapse the
+    // chart to that one category so bubbles spread across the full plot width instead of
+    // cramming into one narrow 1/12th-wide band (which caused labels/bubbles to overlap).
+    var mesIdx = STATE.sku.mes ? MESES.indexOf(STATE.sku.mes) : -1;
     renderBubbleChart(el('chartSkuBubble'), {
-      categories: MESES_ABBR,
+      categories: mesIdx >= 0 ? [MESES_ABBR[mesIdx]] : MESES_ABBR,
       series: art.series.map(function (s, i) {
+        var months = mesIdx >= 0 ? [s.months[mesIdx]] : s.months;
         return {
           label: s.label, color: SERIES_COLORS[i % SERIES_COLORS.length],
-          values: s.months.map(function (m) { return m.chatPct; }),
-          sizes: s.months.map(function (m) { return m.chatKg; })
+          values: months.map(function (m) { return m.chatPct; }),
+          sizes: months.map(function (m) { return m.chatKg; })
         };
       }),
       formatValue: function (v) { return fmtPct(v, 1); },
       formatSize: function (v) { return fmtInt(v) + ' kg'; }
     });
-    el('chartSkuBubble').parentNode.querySelector('.cap').textContent = art.series.length === 0 ? 'Sin artículos con chatarra para este filtro' :
+    var skuFilterTxt = (STATE.sku.mes ? STATE.sku.mes : 'año completo') + ', ' + (STATE.sku.maquina ? machineShortLabel(STATE.sku.maquina, STATE.data.machineCodes) : 'todas las máquinas');
+    el('chartSkuBubble').parentNode.querySelector('.cap').textContent = art.series.length === 0 ? 'Sin artículos con chatarra para este filtro (' + skuFilterTxt + ')' :
       (art.totalArticles > SKU_BUBBLE_MAX_ARTICLES ?
-        'Top ' + SKU_BUBBLE_MAX_ARTICLES + ' de ' + fmtInt(art.totalArticles) + ' artículos por chatarra — tamaño de burbuja = kg de chatarra' :
-        'tamaño de burbuja = kg de chatarra — según búsqueda y máquina seleccionadas');
+        'Top ' + SKU_BUBBLE_MAX_ARTICLES + ' de ' + fmtInt(art.totalArticles) + ' artículos por chatarra — ' + skuFilterTxt :
+        'tamaño de burbuja = kg de chatarra — ' + skuFilterTxt);
 
     var rows = STATE.engine.skuBuscador(STATE.year, STATE.sku);
     var total = rows.length;
