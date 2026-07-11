@@ -1714,9 +1714,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     }
 
     /* ---- Una serie por artículo (no agregado) para el gráfico de burbujas ---- */
-    function skuArticleMonthlyTrend(anio, opts, maxArticles) {
+    function skuArticleMonthlyTrend(anio, opts) {
       opts = opts || {};
-      maxArticles = maxArticles || 6;
       var q = opts.query ? normKey(opts.query) : null;
       var mesN = opts.mes ? MESES.indexOf(opts.mes) + 1 : null;
       function matchProd(p) {
@@ -1742,10 +1741,11 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
       var chatTotals = {};
       chatAll.forEach(function (c) { chatTotals[c.codSolic] = (chatTotals[c.codSolic] || 0) + (isNum(c.totalUnEst) ? c.totalUnEst : 0); });
-      var allSkus = Object.keys(labelOf);
-      var topSkus = allSkus.slice().sort(function (a, b) { return (chatTotals[b] || 0) - (chatTotals[a] || 0); }).slice(0, maxArticles);
+      // every article with recorded chatarra for the current filter — no top-N cap
+      var allSkus = Object.keys(labelOf).filter(function (sku) { return (chatTotals[sku] || 0) > 0; });
+      var orderedSkus = allSkus.slice().sort(function (a, b) { return (chatTotals[b] || 0) - (chatTotals[a] || 0); });
 
-      var series = topSkus.map(function (sku) {
+      var series = orderedSkus.map(function (sku) {
         var months = MESES.map(function (mesNombre, i) {
           var mesN = i + 1;
           var prodKg = sum(prodAll.filter(function (p) { return p.sku === sku && p.mes === mesN; }).map(function (p) { return p.totalUnEst; }));
@@ -2178,13 +2178,16 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
   function renderBubbleChart(container, opts) {
     // opts: {categories, series:[{label,color,values(0..1 y-axis),sizes(kg, bubble area)}], formatValue, formatSize}
-    // one bubble per article × month: center label = kg (formatSize), outside label = article name.
+    // one bubble per article × month: center label = kg (formatSize), outside label = full article name.
+    // Every article is shown (no top-N cap) — each bubble is given horizontal room sized to
+    // fit its full label so names never truncate or overlap; the chart grows wider instead of
+    // cramming, and the card scrolls horizontally when it doesn't fit.
     chartUid++;
     var series = opts.series;
     var nS = series.length;
-    var W = 720, H = 360, padL = 46, padR = 20, padT = 50, padB = 34;
-    var plotW = W - padL - padR, plotH = H - padT - padB;
     var n = opts.categories.length;
+    var H = 360, padL = 46, padR = 20, padT = 50, padB = 34;
+    var plotH = H - padT - padB;
 
     var allVals = [];
     series.forEach(function (s) { s.values.forEach(function (v) { if (isNum(v)) allVals.push(v); }); });
@@ -2199,12 +2202,32 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       if (!isNum(s) || s <= 0 || !maxSize) return 0;
       return minR + Math.sqrt(s / maxSize) * (maxR - minR);
     }
+    // rough width (px) a horizontal label needs at the 9px bold font used for name labels
+    function labelW(text) { return Math.max(46, Math.min(260, text.length * 5.6 + 16)); }
 
-    var bandW = plotW / n;
-    var jitterCap = n <= 1 ? 70 : 28;
-    var jitter = nS > 1 ? Math.min(jitterCap, bandW / (nS + 0.5)) : 0;
-    function xBase(i) { return n <= 1 ? padL + plotW / 2 : padL + plotW * i / (n - 1); }
-    function x(i, si) { return xBase(i) + (si - (nS - 1) / 2) * jitter; }
+    // bucket every (article, month) point into its category slot, then lay slots out
+    // left-to-right, each wide enough to fit all its items side by side without overlap.
+    var slots = [];
+    for (var i = 0; i < n; i++) slots.push([]);
+    series.forEach(function (s, si) {
+      s.values.forEach(function (val, i) {
+        if (!isNum(val)) return;
+        slots[i].push({ si: si, i: i, val: val, size: s.sizes[i], label: s.label, color: s.color });
+      });
+    });
+    var gap = 10, interSlot = 26;
+    var slotWidths = slots.map(function (items) {
+      if (!items.length) return 60;
+      var w = items.reduce(function (acc, it) { return acc + labelW(it.label); }, 0) + gap * (items.length - 1);
+      return Math.max(60, w);
+    });
+    var plotW = slotWidths.reduce(function (a, b) { return a + b; }, 0) + interSlot * Math.max(0, n - 1);
+    var W = padL + plotW + padR;
+
+    var slotStart = [];
+    var acc = padL;
+    for (var si2 = 0; si2 < n; si2++) { slotStart.push(acc); acc += slotWidths[si2] + interSlot; }
+    function xBase(i) { return slotStart[i] + slotWidths[i] / 2; }
     function y(v) { return padT + plotH - (v / maxV) * plotH; }
     var baseline = y(0);
 
@@ -2224,32 +2247,30 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var tipId = 'tip' + chartUid;
     var bubbles = [];
     var uid = 0;
-    series.forEach(function (s, si) {
-      s.values.forEach(function (val, i) {
-        var size = s.sizes[i];
-        if (!isNum(val)) return;
+    slots.forEach(function (items, i) {
+      var totalW = items.reduce(function (acc, it) { return acc + labelW(it.label); }, 0) + gap * (items.length - 1);
+      var cursor = xBase(i) - totalW / 2;
+      items.forEach(function (it) {
+        var w = labelW(it.label);
+        var cx = cursor + w / 2;
+        cursor += w + gap;
+        var r = Math.max(3, radius(it.size));
+        var cy = y(it.val);
         uid++;
-        var r = Math.max(3, radius(size));
-        var cx = x(i, si), cy = y(val);
-        bubblesHtml += '<circle class="bubble" data-u="' + uid + '" cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="' + s.color + '" fill-opacity="0.35" stroke="' + s.color + '" stroke-width="2"></circle>';
-        if (isNum(size) && size > 0 && r >= 13) {
-          centerLabelsHtml += '<text class="bubble-center-label" data-u="' + uid + '" x="' + cx + '" y="' + (cy + 3.5) + '" text-anchor="middle">' + opts.formatSize(size) + '</text>';
+        bubblesHtml += '<circle class="bubble" data-u="' + uid + '" cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="' + it.color + '" fill-opacity="0.35" stroke="' + it.color + '" stroke-width="2"></circle>';
+        if (isNum(it.size) && it.size > 0 && r >= 13) {
+          centerLabelsHtml += '<text class="bubble-center-label" data-u="' + uid + '" x="' + cx + '" y="' + (cy + 3.5) + '" text-anchor="middle">' + opts.formatSize(it.size) + '</text>';
         }
-        var tier = si % 3;
-        var nameY = cy - r - 6 - tier * 11;
+        var nameY = cy - r - 7;
         // leader line points straight up from the bubble edge to its (horizontal) name label
-        leadersHtml += '<line class="bubble-leader" data-u="' + uid + '" x1="' + cx + '" x2="' + cx + '" y1="' + (cy - r) + '" y2="' + (nameY + 3) + '" stroke="' + s.color + '"></line>';
-        nameLabelsHtml += '<text class="bubble-name-label" data-u="' + uid + '" x="' + cx + '" y="' + nameY + '" text-anchor="middle" fill="' + s.color + '">' + escapeHtml(truncateLabel(s.label, 14)) + '</text>';
-        bubbles.push({ uid: uid, label: s.label, cat: opts.categories[i], val: val, size: size, cx: cx, cy: cy, r: r });
+        leadersHtml += '<line class="bubble-leader" data-u="' + uid + '" x1="' + cx + '" x2="' + cx + '" y1="' + (cy - r) + '" y2="' + (nameY + 3) + '" stroke="' + it.color + '"></line>';
+        nameLabelsHtml += '<text class="bubble-name-label" data-u="' + uid + '" x="' + cx + '" y="' + nameY + '" text-anchor="middle" fill="' + it.color + '">' + escapeHtml(it.label) + '</text>';
+        bubbles.push({ uid: uid, label: it.label, cat: opts.categories[i], val: it.val, size: it.size, cx: cx, cy: cy, r: r });
       });
     });
 
-    var legendHtml = nS > 1 ? '<div class="chart-legend">' + series.map(function (s) {
-      return '<span class="sw"><span class="dot" style="background:' + s.color + '"></span>' + escapeHtml(truncateLabel(s.label, 30)) + '</span>';
-    }).join('') + '</div>' : '';
-
-    container.innerHTML = '<div class="chart-wrap">' + legendHtml +
-      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
+    container.innerHTML = '<div class="chart-wrap">' +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" style="width:' + W + 'px;max-width:none;" id="svg' + chartUid + '">' +
       '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
       gridHtml + labelsHtml + leadersHtml + bubblesHtml + centerLabelsHtml + nameLabelsHtml + xLabelsHtml +
       '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
@@ -2854,9 +2875,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   }
 
   var SKU_ROW_LIMIT = 300;
-  var SKU_BUBBLE_MAX_ARTICLES = 6;
   function renderSkuBuscador() {
-    var art = STATE.engine.skuArticleMonthlyTrend(STATE.year, { maquina: STATE.sku.maquina, mes: STATE.sku.mes, query: STATE.sku.query }, SKU_BUBBLE_MAX_ARTICLES);
+    var art = STATE.engine.skuArticleMonthlyTrend(STATE.year, { maquina: STATE.sku.maquina, mes: STATE.sku.mes, query: STATE.sku.query });
     // when a single month is selected there is only one populated x-position — collapse the
     // chart to that one category so bubbles spread across the full plot width instead of
     // cramming into one narrow 1/12th-wide band (which caused labels/bubbles to overlap).
@@ -2876,9 +2896,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     });
     var skuFilterTxt = (STATE.sku.mes ? STATE.sku.mes : 'año completo') + ', ' + (STATE.sku.maquina ? machineShortLabel(STATE.sku.maquina, STATE.data.machineCodes) : 'todas las máquinas');
     el('chartSkuBubble').parentNode.querySelector('.cap').textContent = art.series.length === 0 ? 'Sin artículos con chatarra para este filtro (' + skuFilterTxt + ')' :
-      (art.totalArticles > SKU_BUBBLE_MAX_ARTICLES ?
-        'Top ' + SKU_BUBBLE_MAX_ARTICLES + ' de ' + fmtInt(art.totalArticles) + ' artículos por chatarra — ' + skuFilterTxt :
-        'tamaño de burbuja = kg de chatarra — ' + skuFilterTxt);
+      (fmtInt(art.totalArticles) + ' artículo' + (art.totalArticles === 1 ? '' : 's') + ' con chatarra — ' + skuFilterTxt);
 
     var rows = STATE.engine.skuBuscador(STATE.year, STATE.sku);
     var total = rows.length;
