@@ -1168,6 +1168,52 @@
       };
     }
 
+    /* ---- Puntos críticos: TODAS las desviaciones vs. meta en un solo lugar ----
+     * Reúne, para un mes, cada indicador con meta definida — OEE, producción vs.
+     * presupuesto, chatarra vs. meta estándar, costo/kg vs. presupuesto y las tres
+     * categorías de costo a nivel planta — normalizando la "gravedad" como desviación
+     * relativa en la dirección mala, para poder rankear peor-primero entre unidades
+     * distintas (kg, %, $/kg). */
+    function puntosCriticos(anio, mesNombre) {
+      var det = detalleMes(anio, mesNombre);
+      // if the selected month is still in progress, prorate ABSOLUTE budgets (kg, $)
+      // to the days elapsed — comparing 9 days of production against a 31-day budget
+      // would flag every machine as critical. Ratios (%, $/kg) need no proration.
+      var proy = proyeccionCierre(anio);
+      var enCurso = proy && proy.mes === mesNombre && !proy.cerrado;
+      var factorDias = enCurso ? proy.diaActual / proy.diasMes : 1;
+      var items = [];
+      function push(tipo, maquina, real, meta, badWhenHigher, fmtKind) {
+        if (real == null || meta == null || meta === 0) return;
+        var rel = (real - meta) / Math.abs(meta);
+        var malo = badWhenHigher ? rel : -rel; // >0 = fuera de meta, magnitud = gravedad
+        items.push({
+          tipo: tipo, maquina: maquina, real: real, meta: meta, fmtKind: fmtKind,
+          desvRel: rel, gravedad: malo,
+          estado: malo <= 0 ? 'ok' : (malo >= 0.2 ? 'critico' : (malo >= 0.08 ? 'alerta' : 'atencion'))
+        });
+      }
+      var sufijo = enCurso ? ' (al día ' + proy.diaActual + ')' : '';
+      det.columnas.forEach(function (c) {
+        if (!c.isBraner) {
+          var ppto = pptoProdVal(c.maquina, mesNombre);
+          push('Producción vs Ppto' + sufijo, c.maquina, c.prodEstandar, ppto != null ? ppto * factorDias : null, false, 'kg');
+          push('OEE vs Meta', c.maquina, c.oee, c.oeeMeta, false, 'pct1');
+        }
+        push('Chatarra vs Meta', c.maquina, c.chatarraPct, c.metaChatarraEstandar, true, 'pct2');
+        push('Costo/kg vs Ppto', c.maquina, c.costoPorKilo, c.metaPresupuesto, true, 'money');
+      });
+      ['Aceite y Lubricante', 'Insumos de Fábrica', 'Embalajes'].forEach(function (cat) {
+        var cc = costosCategoria(anio, cat, {});
+        var m = cc.months.filter(function (x) { return x.mes === mesNombre; })[0];
+        if (m) push('Costo ' + cat + sufijo, 'Planta', m.real, m.ppto != null ? m.ppto * factorDias : null, true, 'money');
+      });
+      items.sort(function (a, b) { return b.gravedad - a.gravedad; });
+      var resumen = { critico: 0, alerta: 0, atencion: 0, ok: 0 };
+      items.forEach(function (it) { resumen[it.estado]++; });
+      return { items: items, resumen: resumen, mes: mesNombre, enCurso: enCurso, diaActual: enCurso ? proy.diaActual : null, diasMes: enCurso ? proy.diasMes : null };
+    }
+
     /* ---- Pareto de chatarra 80/20: qué artículos concentran la chatarra ---- */
     function paretoChatarra(anio, opts) {
       opts = opts || {};
@@ -1334,7 +1380,7 @@
       pptoTotalVal: pptoTotalVal, oeeMetaVal: oeeMetaVal,
       torreControl: torreControl, aporteOEEPorMaquina: aporteOEEPorMaquina, productMix: productMix,
       produccionMensualPorMaquina: produccionMensualPorMaquina, costosCategoria: costosCategoria,
-      proyeccionCierre: proyeccionCierre, paretoChatarra: paretoChatarra,
+      proyeccionCierre: proyeccionCierre, paretoChatarra: paretoChatarra, puntosCriticos: puntosCriticos,
       skuBuscador: skuBuscador, skuMonthlyTrend: skuMonthlyTrend, skuArticleMonthlyTrend: skuArticleMonthlyTrend
     };
   }
@@ -2115,7 +2161,8 @@
     restored: false,
     sku: { maquina: null, mes: null, query: '' },
     productos: { maquina: null, mes: null },
-    insumos: { maquina: null }
+    insumos: { maquina: null },
+    criticos: { mes: null }
   };
 
   function el(id) { return document.getElementById(id); }
@@ -2478,6 +2525,12 @@
       STATE.insumos.maquina = val || null;
       renderInsumos();
     });
+
+    renderSegmented('criticosMonthSeg', MESES.map(function (m, i) { return { value: m, label: MESES_ABBR[i] }; }),
+      STATE.criticos.mes || STATE.month, function (val) {
+        STATE.criticos.mes = val;
+        renderCriticos(STATE.year);
+      });
   }
 
   function pickDefaultMonth(anio) {
@@ -2512,6 +2565,49 @@
     });
     html += '</tbody></table>';
     el('torreControl').innerHTML = html;
+  }
+
+  var CRITICOS_FMT = {
+    kg: fmtInt,
+    pct1: function (v) { return fmtPct(v, 1); },
+    pct2: function (v) { return fmtPct(v, 2); },
+    money: fmtMoney
+  };
+  var CRITICOS_PILL = {
+    critico: '<span class="pill bad">Crítico</span>',
+    alerta: '<span class="pill bad" style="opacity:.75;">Alerta</span>',
+    atencion: '<span class="pill" style="background:color-mix(in srgb, var(--warning) 22%, transparent);color:var(--serious);">Atención</span>',
+    ok: '<span class="pill good">En meta</span>'
+  };
+  function renderCriticos(anio) {
+    var mes = STATE.criticos.mes || STATE.month;
+    var pc = STATE.engine.puntosCriticos(anio, mes);
+    el('criticosMesLabel').textContent = mes + (pc.enCurso ? ' (en curso, día ' + pc.diaActual + ' de ' + pc.diasMes + ' — presupuestos de kg y $ prorrateados)' : '');
+
+    var chips = [
+      { label: 'Críticos (≥20%)', value: pc.resumen.critico, accent: 'var(--critical)' },
+      { label: 'Alertas (8-20%)', value: pc.resumen.alerta, accent: 'var(--serious)' },
+      { label: 'Atención (<8%)', value: pc.resumen.atencion, accent: 'var(--warning)' },
+      { label: 'En meta', value: pc.resumen.ok, accent: 'var(--good)' }
+    ];
+    el('criticosChips').innerHTML = chips.map(function (c) {
+      return '<div class="tile" style="--accent:' + c.accent + ';">' +
+        '<div class="label">' + c.label + '</div>' +
+        '<div class="value">' + c.value + '</div></div>';
+    }).join('');
+
+    var html = '<table class="wide"><thead><tr><th>Indicador</th><th>Máquina</th><th>Real</th><th>Meta / Ppto</th><th>Desviación</th><th>Estado</th></tr></thead><tbody>';
+    pc.items.forEach(function (it) {
+      var fmt = CRITICOS_FMT[it.fmtKind] || fmtInt;
+      html += '<tr>' +
+        '<td>' + escapeHtml(it.tipo) + '</td>' +
+        '<td>' + (it.maquina === 'Planta' ? 'Planta' : escapeHtml(machineShortLabel(it.maquina, STATE.data.machineCodes)) + ' <span class="subtle">' + escapeHtml(it.maquina) + '</span>') + '</td>' +
+        tdv(it.real, fmt) + tdv(it.meta, fmt) +
+        '<td class="' + (it.gravedad > 0 ? 'neg' : 'pos') + '">' + fmtSigned(it.desvRel, function (v) { return fmtPct(v, 1); }) + '</td>' +
+        '<td>' + CRITICOS_PILL[it.estado] + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    el('criticosTable').innerHTML = pc.items.length ? html : '<div class="cap">Sin indicadores con meta para este mes.</div>';
   }
 
   function renderProyeccion(anio) {
@@ -2724,6 +2820,7 @@
     renderKPIs(kpi);
     renderTorreControl(anio, STATE.month);
     renderProyeccion(anio);
+    renderCriticos(anio);
     renderTendencias(anio, resumen);
     renderPresupuesto(anio, resumen);
     renderDetalleMes(anio, STATE.month);
@@ -2741,6 +2838,7 @@
 
   var TAB_META = {
     resumen: { title: 'Resumen Ejecutivo', crumb: 'Planta · Año completo' },
+    criticos: { title: 'Puntos Críticos', crumb: 'Todas las desviaciones vs. meta: OEE, producción, chatarra y costos' },
     maquina: { title: 'Detalle por Máquina', crumb: 'Producción, chatarra, costos y OEE por máquina' },
     espesor: { title: 'Análisis por Espesor', crumb: 'Mix de producción por espesor' },
     insumos: { title: 'Costos e Insumos', crumb: 'Gasto y variación de precio por insumo' },
@@ -2799,7 +2897,8 @@
       document.querySelectorAll('.nav-item.active').forEach(function (b) { activeTab = b.getAttribute('data-tab'); });
       localStorage.setItem(LS_FILTERS, JSON.stringify({
         year: STATE.year, month: STATE.month, machine: STATE.machine,
-        sku: STATE.sku, productos: STATE.productos, insumos: STATE.insumos, tab: activeTab
+        sku: STATE.sku, productos: STATE.productos, insumos: STATE.insumos,
+        criticos: STATE.criticos, tab: activeTab
       }));
     } catch (e) { /* almacenamiento no disponible — seguir sin persistir */ }
   }
@@ -2814,6 +2913,7 @@
       if (f.sku) STATE.sku = { maquina: maqOk(f.sku.maquina) ? f.sku.maquina : null, mes: MESES.indexOf(f.sku.mes) >= 0 ? f.sku.mes : null, query: f.sku.query || '' };
       if (f.productos) STATE.productos = { maquina: maqOk(f.productos.maquina) ? f.productos.maquina : null, mes: MESES.indexOf(f.productos.mes) >= 0 ? f.productos.mes : null };
       if (f.insumos) STATE.insumos = { maquina: maqOk(f.insumos.maquina) ? f.insumos.maquina : null };
+      if (f.criticos) STATE.criticos = { mes: MESES.indexOf(f.criticos.mes) >= 0 ? f.criticos.mes : null };
       STATE.restored = true; // a saved null machine means the user chose "Todas" — don't re-default it
       return f.tab || null;
     } catch (e) { return null; }
