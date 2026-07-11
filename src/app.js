@@ -979,7 +979,9 @@
     }
 
     /* ---- Mix de productos ---- */
-    function productMix(anio) {
+    function productMix(anio, opts) {
+      opts = opts || {};
+      var mesN = opts.mes ? MESES.indexOf(opts.mes) + 1 : null;
       function groupSum(rows, keyFn) {
         var map = {};
         rows.forEach(function (r) {
@@ -991,8 +993,12 @@
         return Object.keys(map).map(function (k) { return { label: k, kg: map[k] }; })
           .sort(function (a, b) { return b.kg - a.kg; });
       }
-      var prodAnio = D.produccion.filter(function (p) { return p.anio === anio; });
-      var chatAnio = D.chatarra.filter(function (p) { return p.anio === anio; });
+      var prodAnio = D.produccion.filter(function (p) {
+        return p.anio === anio && (mesN == null || p.mes === mesN) && (!opts.maquina || p.maquina === opts.maquina);
+      });
+      var chatAnio = D.chatarra.filter(function (p) {
+        return p.anio === anio && (mesN == null || p.mes === mesN) && (!opts.maquina || p.maquina === opts.maquina);
+      });
       return {
         topProductos: groupSum(prodAnio, function (r) { return r.descripcion; }).slice(0, 10),
         porFamilia: groupSum(prodAnio, function (r) { return r.familia; }).slice(0, 10),
@@ -1764,7 +1770,11 @@
    * App wiring
    * ======================================================================= */
 
-  var STATE = { data: null, engine: null, year: null, month: null, machine: null, sku: { maquina: null, mes: null, query: '' } };
+  var STATE = {
+    data: null, engine: null, year: null, month: null, machine: null,
+    sku: { maquina: null, mes: null, query: '' },
+    productos: { maquina: null, mes: null }
+  };
 
   function el(id) { return document.getElementById(id); }
 
@@ -2097,6 +2107,16 @@
       STATE.sku.mes = val || null;
       renderSkuBuscador();
     });
+
+    renderSegmented('productosMachineSeg', skuMachineOptions, STATE.productos.maquina || '', function (val) {
+      STATE.productos.maquina = val || null;
+      renderProductos(STATE.year);
+    });
+    var productosMonthOptions = [{ value: '', label: 'Anual' }].concat(MESES.map(function (m, i) { return { value: m, label: MESES_ABBR[i] }; }));
+    renderSegmented('productosMonthSeg', productosMonthOptions, STATE.productos.mes || '', function (val) {
+      STATE.productos.mes = val || null;
+      renderProductos(STATE.year);
+    });
   }
 
   function pickDefaultMonth(anio) {
@@ -2168,7 +2188,14 @@
 
   function renderProductos(anio) {
     el('productosAnioLabel').textContent = anio;
-    var mix = STATE.engine.productMix(anio);
+    var mix = STATE.engine.productMix(anio, { maquina: STATE.productos.maquina, mes: STATE.productos.mes });
+    var periodo = STATE.productos.mes ? STATE.productos.mes : 'año completo';
+    var maquinaTxt = STATE.productos.maquina ? machineShortLabel(STATE.productos.maquina, STATE.data.machineCodes) : 'todas las máquinas';
+    var suffix = ' — kg, ' + maquinaTxt + ', ' + periodo;
+    el('productosTopCap').textContent = 'producidos' + suffix;
+    el('productosFamProdCap').textContent = 'top 10 familias' + suffix;
+    el('productosFamChatCap').textContent = 'top 10 familias' + suffix;
+
     renderRankedBarChart(el('chartTopProductos'), {
       items: mix.topProductos.map(function (r) { return { label: r.label, value: r.kg }; }),
       formatValue: fmtKgTick, colorVar: 'var(--series-1)'

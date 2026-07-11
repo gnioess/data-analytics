@@ -557,20 +557,30 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
     <section id="tab-productos" class="tab-panel">
       <div class="section">
         <div class="section-title"><span>Mix de productos — <span id="productosAnioLabel"></span></span><span class="line"></span></div>
+        <div class="filter-bar">
+          <div class="filter-group">
+            <span class="fg-label">Máquina</span>
+            <div class="segmented scroll" id="productosMachineSeg"></div>
+          </div>
+          <div class="filter-group">
+            <span class="fg-label">Periodo</span>
+            <div class="segmented scroll" id="productosMonthSeg"></div>
+          </div>
+        </div>
         <div class="card">
           <h3>Top 10 productos por producción</h3>
-          <div class="cap">kg producidos en el año</div>
+          <div class="cap" id="productosTopCap">kg producidos en el año</div>
           <div id="chartTopProductos"></div>
         </div>
         <div class="grid-2">
           <div class="card">
             <h3>Producción por familia</h3>
-            <div class="cap">kg — top 10 familias</div>
+            <div class="cap" id="productosFamProdCap">kg — top 10 familias</div>
             <div id="chartFamiliaProd"></div>
           </div>
           <div class="card">
             <h3>Chatarra por familia</h3>
-            <div class="cap">kg — top 10 familias</div>
+            <div class="cap" id="productosFamChatCap">kg — top 10 familias</div>
             <div id="chartFamiliaChatarra"></div>
           </div>
         </div>
@@ -1605,7 +1615,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     }
 
     /* ---- Mix de productos ---- */
-    function productMix(anio) {
+    function productMix(anio, opts) {
+      opts = opts || {};
+      var mesN = opts.mes ? MESES.indexOf(opts.mes) + 1 : null;
       function groupSum(rows, keyFn) {
         var map = {};
         rows.forEach(function (r) {
@@ -1617,8 +1629,12 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         return Object.keys(map).map(function (k) { return { label: k, kg: map[k] }; })
           .sort(function (a, b) { return b.kg - a.kg; });
       }
-      var prodAnio = D.produccion.filter(function (p) { return p.anio === anio; });
-      var chatAnio = D.chatarra.filter(function (p) { return p.anio === anio; });
+      var prodAnio = D.produccion.filter(function (p) {
+        return p.anio === anio && (mesN == null || p.mes === mesN) && (!opts.maquina || p.maquina === opts.maquina);
+      });
+      var chatAnio = D.chatarra.filter(function (p) {
+        return p.anio === anio && (mesN == null || p.mes === mesN) && (!opts.maquina || p.maquina === opts.maquina);
+      });
       return {
         topProductos: groupSum(prodAnio, function (r) { return r.descripcion; }).slice(0, 10),
         porFamilia: groupSum(prodAnio, function (r) { return r.familia; }).slice(0, 10),
@@ -2390,7 +2406,11 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
    * App wiring
    * ======================================================================= */
 
-  var STATE = { data: null, engine: null, year: null, month: null, machine: null, sku: { maquina: null, mes: null, query: '' } };
+  var STATE = {
+    data: null, engine: null, year: null, month: null, machine: null,
+    sku: { maquina: null, mes: null, query: '' },
+    productos: { maquina: null, mes: null }
+  };
 
   function el(id) { return document.getElementById(id); }
 
@@ -2723,6 +2743,16 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       STATE.sku.mes = val || null;
       renderSkuBuscador();
     });
+
+    renderSegmented('productosMachineSeg', skuMachineOptions, STATE.productos.maquina || '', function (val) {
+      STATE.productos.maquina = val || null;
+      renderProductos(STATE.year);
+    });
+    var productosMonthOptions = [{ value: '', label: 'Anual' }].concat(MESES.map(function (m, i) { return { value: m, label: MESES_ABBR[i] }; }));
+    renderSegmented('productosMonthSeg', productosMonthOptions, STATE.productos.mes || '', function (val) {
+      STATE.productos.mes = val || null;
+      renderProductos(STATE.year);
+    });
   }
 
   function pickDefaultMonth(anio) {
@@ -2794,7 +2824,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
   function renderProductos(anio) {
     el('productosAnioLabel').textContent = anio;
-    var mix = STATE.engine.productMix(anio);
+    var mix = STATE.engine.productMix(anio, { maquina: STATE.productos.maquina, mes: STATE.productos.mes });
+    var periodo = STATE.productos.mes ? STATE.productos.mes : 'año completo';
+    var maquinaTxt = STATE.productos.maquina ? machineShortLabel(STATE.productos.maquina, STATE.data.machineCodes) : 'todas las máquinas';
+    var suffix = ' — kg, ' + maquinaTxt + ', ' + periodo;
+    el('productosTopCap').textContent = 'producidos' + suffix;
+    el('productosFamProdCap').textContent = 'top 10 familias' + suffix;
+    el('productosFamChatCap').textContent = 'top 10 familias' + suffix;
+
     renderRankedBarChart(el('chartTopProductos'), {
       items: mix.topProductos.map(function (r) { return { label: r.label, value: r.kg }; }),
       formatValue: fmtKgTick, colorVar: 'var(--series-1)'
