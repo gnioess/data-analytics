@@ -258,9 +258,16 @@ td.dash{color:var(--text-muted);}
 svg.chart{width:100%;height:auto;overflow:visible;}
 .bar{transition:opacity .1s;}
 .bar:hover{opacity:.82;}
-.axis-label{fill:var(--text-muted);font-size:10.5px;}
+.axis-label{fill:var(--text-muted);font-size:10.5px;font-variant-numeric:tabular-nums;}
 .grid-line{stroke:var(--grid);stroke-width:1;}
 .baseline{stroke:var(--baseline);stroke-width:1;}
+.value-label{font-size:10px;font-weight:700;font-variant-numeric:tabular-nums;opacity:.85;paint-order:stroke;stroke:var(--surface-1);stroke-width:3px;transition:opacity .1s;}
+.value-label-active{opacity:1;}
+.bar-active{filter:brightness(1.08);}
+.pt{transition:r .1s;cursor:pointer;}
+.pt-active{r:6;}
+.crosshair{stroke:var(--text-muted);stroke-width:1;stroke-dasharray:3 3;transition:opacity .1s;pointer-events:none;}
+.stack-label{font-size:10px;font-weight:700;fill:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35);pointer-events:none;}
 
 footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;margin-top:30px;}
 .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;}

@@ -382,11 +382,20 @@
    * Workbook loader
    * ======================================================================= */
 
+  function mergeConsolidadoConMensual(consolidado, mensual) {
+    var mesesConDatos = {};
+    consolidado.forEach(function (r) { mesesConDatos[r.anio + '-' + r.mes] = true; });
+    var extra = mensual.filter(function (r) { return !mesesConDatos[r.anio + '-' + r.mes]; });
+    return consolidado.concat(extra);
+  }
+
   function loadWorkbook(arrayBuffer) {
     var wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
 
     var wsProduccion = findSheet(wb, 'produccion');
     var wsChatarra = findSheet(wb, 'chatarra');
+    var wsProduccionM = findSheet(wb, 'produccionm');
+    var wsChatarraM = findSheet(wb, 'chatarram');
     var wsVales = findSheet(wb, 'valesdeconsumo', { startsWith: true });
     var wsBobinas = findSheet(wb, 'bobinasm');
     var wsProdResumen = findSheet(wb, 'prodresumenanu');
@@ -405,8 +414,18 @@
         '. Verifica que el Excel tenga la misma estructura del panel INDAMA.');
     }
 
-    var produccion = parseProduccion(sheetToAOA(wsProduccion));
-    var chatarra = parseChatarra(sheetToAOA(wsChatarra));
+    // "Produccion"/"Chatarra" hold closed, completed months; "Produccion M"/"Chatarra M"
+    // hold the current month being filled in day by day from SAP and get folded into the
+    // main sheet once the month closes. Use the M sheet only for months not yet present
+    // in the main sheet, so an in-progress month still shows up without risking double counts.
+    var produccion = mergeConsolidadoConMensual(
+      parseProduccion(sheetToAOA(wsProduccion)),
+      wsProduccionM ? parseProduccion(sheetToAOA(wsProduccionM)) : []
+    );
+    var chatarra = mergeConsolidadoConMensual(
+      parseChatarra(sheetToAOA(wsChatarra)),
+      wsChatarraM ? parseChatarra(sheetToAOA(wsChatarraM)) : []
+    );
     var vales = wsVales ? parseValesConsumo(sheetToAOA(wsVales)) : [];
     var bobinasM = wsBobinas ? parseMonthlyMatrixByLabel(sheetToAOA(wsBobinas), 'descripcion') : {};
     var prodResumenAnu = wsProdResumen ? parseMonthlyMatrixByLabel(sheetToAOA(wsProdResumen), 'nommaq') : {};
@@ -810,7 +829,7 @@
   function renderBulletChart(container, opts) {
     // opts: {categories, values, targets, formatValue, formatTarget, barColorVar, seriesLabel, targetLabel}
     chartUid++;
-    var W = 640, H = 220, padL = 8, padR = 8, padT = 10, padB = 26;
+    var W = 640, H = 244, padL = 8, padR = 8, padT = 22, padB = 26;
     var plotW = W - padL - padR, plotH = H - padT - padB;
     var n = opts.categories.length;
     var bandW = plotW / n;
@@ -819,7 +838,7 @@
     var allVals = opts.values.concat(opts.targets).filter(isNum);
     var maxV = allVals.length ? Math.max.apply(null, allVals) : 1;
     var minV = allVals.length ? Math.min(0, Math.min.apply(null, allVals)) : 0;
-    maxV = maxV * 1.15 || 1;
+    maxV = maxV * 1.22 || 1;
 
     function y(v) { return padT + plotH - ((v - minV) / (maxV - minV)) * plotH; }
     var baseline = y(0);
@@ -832,7 +851,7 @@
       labelsHtml += '<text class="axis-label" x="' + (padL) + '" y="' + (yy - 3) + '">' + opts.formatValue(v, true) + '</text>';
     }
 
-    var barsHtml = '', ticksHtml = '', xLabelsHtml = '';
+    var barsHtml = '', ticksHtml = '', xLabelsHtml = '', valueLabelsHtml = '';
     var tipId = 'tip' + chartUid;
     var bars = [];
     opts.categories.forEach(function (cat, i) {
@@ -852,6 +871,8 @@
           'Q' + (x0 + barW) + ',' + top + ' ' + (x0 + barW) + ',' + (top + r) +
           'L' + (x0 + barW) + ',' + (top + h) + 'Z';
         barsHtml += '<path class="bar" data-i="' + i + '" d="' + d + '" fill="' + opts.barColorVar + '"></path>';
+        var labelY = val >= 0 ? Math.min(top, baseline) - 6 : Math.max(top + h, baseline) + 12;
+        valueLabelsHtml += '<text class="value-label" data-i="' + i + '" x="' + cx + '" y="' + labelY + '" text-anchor="middle">' + opts.formatValue(val) + '</text>';
         bars.push({ i: i, cx: cx, val: val, tgt: tgt, cat: cat });
       }
       if (isNum(tgt)) {
@@ -868,38 +889,49 @@
     var svg = '<div class="chart-wrap">' + legendHtml +
       '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
       '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
-      gridHtml + labelsHtml + barsHtml + ticksHtml + xLabelsHtml +
+      gridHtml + labelsHtml + barsHtml + ticksHtml + valueLabelsHtml + xLabelsHtml +
       '</svg>' +
       '<div class="chart-tooltip" id="' + tipId + '"></div>' +
       '</div>';
     container.innerHTML = svg;
 
     var tip = container.querySelector('#' + tipId);
-    var svgEl = container.querySelector('#svg' + chartUid);
     var wrapEl = container.querySelector('.chart-wrap');
     container.querySelectorAll('.bar').forEach(function (barEl) {
       var i = parseInt(barEl.getAttribute('data-i'), 10);
       var b = bars.filter(function (x) { return x.i === i; })[0];
       if (!b) return;
-      barEl.addEventListener('mousemove', function (ev) {
+      var label = container.querySelector('.value-label[data-i="' + i + '"]');
+      function activate(ev) {
         var rect = wrapEl.getBoundingClientRect();
         var scale = rect.width / W;
-        var left = (b.cx * scale);
-        var top = (y(b.val) * scale);
-        tip.style.left = left + 'px';
-        tip.style.top = top + 'px';
+        tip.style.left = (b.cx * scale) + 'px';
+        tip.style.top = (y(b.val) * scale) + 'px';
         tip.style.opacity = 1;
         tip.innerHTML = '<strong>' + b.cat + '</strong><br>' + opts.seriesLabel + ': ' + opts.formatValue(b.val) +
           (isNum(b.tgt) ? '<br>' + opts.targetLabel + ': ' + opts.formatValue(b.tgt) : '');
-      });
-      barEl.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+        barEl.classList.add('bar-active');
+        if (label) label.classList.add('value-label-active');
+      }
+      function deactivate() {
+        tip.style.opacity = 0;
+        barEl.classList.remove('bar-active');
+        if (label) label.classList.remove('value-label-active');
+      }
+      barEl.addEventListener('mousemove', activate);
+      barEl.addEventListener('mouseleave', deactivate);
+      if (label) {
+        label.addEventListener('mousemove', activate);
+        label.addEventListener('mouseleave', deactivate);
+      }
     });
   }
 
   function renderLineChart(container, opts) {
     // opts: {categories, series:[{name,color,values}], formatValue}
     chartUid++;
-    var W = 640, H = 240, padL = 8, padR = 8, padT = 14, padB = 26;
+    var multi = opts.series.length > 1;
+    var W = 640, H = multi ? 260 : 250, padL = 8, padR = 8, padT = 26, padB = 26;
     var plotW = W - padL - padR, plotH = H - padT - padB;
     var n = opts.categories.length;
 
@@ -908,6 +940,7 @@
     var maxV = allVals.length ? Math.max.apply(null, allVals) : 1;
     var minV = allVals.length ? Math.min(0, Math.min.apply(null, allVals)) : 0;
     maxV = maxV * 1.15 || 1;
+    minV = minV < 0 ? minV * 1.15 : minV;
 
     function x(i) { return n <= 1 ? padL + plotW / 2 : padL + plotW * i / (n - 1); }
     function y(v) { return padT + plotH - ((v - minV) / ((maxV - minV) || 1)) * plotH; }
@@ -925,24 +958,28 @@
       xLabelsHtml += '<text class="axis-label" x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + cat + '</text>';
     });
 
-    var seriesHtml = '', legendHtml = '<div class="chart-legend">';
-    opts.series.forEach(function (s) {
+    var seriesHtml = '', markersHtml = '', valueLabelsHtml = '', legendHtml = '<div class="chart-legend">';
+    opts.series.forEach(function (s, si) {
       var d = '', open = false;
       s.values.forEach(function (v, i) {
         if (!isNum(v)) { open = false; return; }
         d += (open ? 'L' : 'M') + x(i) + ',' + y(v) + ' ';
         open = true;
       });
-      seriesHtml += '<path fill="none" stroke="' + s.color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="' + d.trim() + '"></path>';
+      seriesHtml += '<path fill="none" stroke="' + s.color + '" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" d="' + d.trim() + '"></path>';
       s.values.forEach(function (v, i) {
         if (!isNum(v)) return;
-        seriesHtml += '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="3.5" fill="' + s.color + '" stroke="var(--surface-1)" stroke-width="2"></circle>';
+        markersHtml += '<circle class="pt" data-s="' + si + '" data-i="' + i + '" cx="' + x(i) + '" cy="' + y(v) + '" r="4" fill="' + s.color + '" stroke="var(--surface-1)" stroke-width="2"></circle>';
+        var above = si % 2 === 0;
+        var ly = above ? y(v) - 10 : y(v) + 17;
+        valueLabelsHtml += '<text class="value-label" data-s="' + si + '" data-i="' + i + '" x="' + x(i) + '" y="' + ly + '" text-anchor="middle" fill="' + s.color + '">' + opts.formatValue(v) + '</text>';
       });
       legendHtml += '<span class="sw"><span class="dot" style="background:' + s.color + '"></span>' + s.name + '</span>';
     });
     legendHtml += '</div>';
 
     var tipId = 'tip' + chartUid;
+    var crossId = 'cross' + chartUid;
     var bandW = n > 1 ? plotW / (n - 1) : plotW;
     var hitHtml = '';
     opts.categories.forEach(function (cat, i) {
@@ -953,10 +990,13 @@
     container.innerHTML = '<div class="chart-wrap">' + legendHtml +
       '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
       '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
-      gridHtml + labelsHtml + seriesHtml + xLabelsHtml + hitHtml +
+      gridHtml + labelsHtml +
+      '<line id="' + crossId + '" class="crosshair" x1="0" x2="0" y1="' + padT + '" y2="' + (padT + plotH) + '" opacity="0"></line>' +
+      seriesHtml + markersHtml + valueLabelsHtml + xLabelsHtml + hitHtml +
       '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
 
     var tip = container.querySelector('#' + tipId);
+    var cross = container.querySelector('#' + crossId);
     var wrapEl = container.querySelector('.chart-wrap');
     container.querySelectorAll('.hit-col').forEach(function (hit) {
       var i = parseInt(hit.getAttribute('data-i'), 10);
@@ -974,8 +1014,14 @@
         });
         tip.innerHTML = html;
         tip.style.opacity = 1;
+        cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.setAttribute('opacity', 1);
+        container.querySelectorAll('.pt').forEach(function (p) { p.classList.toggle('pt-active', p.getAttribute('data-i') === String(i)); });
       });
-      hit.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+      hit.addEventListener('mouseleave', function () {
+        tip.style.opacity = 0;
+        cross.setAttribute('opacity', 0);
+        container.querySelectorAll('.pt').forEach(function (p) { p.classList.remove('pt-active'); });
+      });
     });
   }
 
@@ -997,7 +1043,7 @@
       labelsHtml += '<text class="axis-label" x="' + padL + '" y="' + (yy - 3) + '">' + Math.round(frac * 100) + '%</text>';
     }
 
-    var barsHtml = '', xLabelsHtml = '';
+    var barsHtml = '', xLabelsHtml = '', stackLabelsHtml = '';
     var segs = [];
     opts.categories.forEach(function (cat, i) {
       var cx = padL + bandW * i + bandW / 2;
@@ -1014,6 +1060,9 @@
         var x0 = cx - barW / 2;
         var hDraw = Math.max(0, segH - gap);
         barsHtml += '<rect class="bar" x="' + x0 + '" y="' + top + '" width="' + barW + '" height="' + hDraw + '" rx="2" fill="' + s.color + '" data-i="' + i + '" data-s="' + si + '"></rect>';
+        if (hDraw >= 15) {
+          stackLabelsHtml += '<text class="stack-label" x="' + cx + '" y="' + (top + hDraw / 2 + 3.5) + '" text-anchor="middle">' + fmtPct(v / total, 0) + '</text>';
+        }
         segs.push({ i: i, si: si, cat: cat, name: s.name, v: v / total, cx: cx, top: top });
         yCursor -= segH;
       });
@@ -1027,7 +1076,7 @@
     container.innerHTML = '<div class="chart-wrap">' + legendHtml +
       '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
       '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + (padT + plotH) + '" y2="' + (padT + plotH) + '"></line>' +
-      gridHtml + labelsHtml + barsHtml + xLabelsHtml +
+      gridHtml + labelsHtml + barsHtml + stackLabelsHtml + xLabelsHtml +
       '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
 
     var tip = container.querySelector('#' + tipId);
@@ -1043,8 +1092,9 @@
         tip.style.top = (seg.top * scale) + 'px';
         tip.style.opacity = 1;
         tip.innerHTML = '<strong>' + seg.cat + '</strong><br>' + seg.name + ': ' + fmtPct(seg.v, 1);
+        barEl.classList.add('bar-active');
       });
-      barEl.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+      barEl.addEventListener('mouseleave', function () { tip.style.opacity = 0; barEl.classList.remove('bar-active'); });
     });
   }
 
