@@ -629,16 +629,22 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
           <span class="fg-label">Mes</span>
           <div class="segmented scroll" id="criticosMonthSeg"></div>
         </div>
+        <div class="filter-group">
+          <span class="fg-label">Máquina</span>
+          <div class="segmented scroll" id="criticosMachineSeg"></div>
+        </div>
+        <div class="filter-group">
+          <span class="fg-label">Estado</span>
+          <div class="segmented scroll" id="criticosEstadoSeg"></div>
+        </div>
       </div>
       <div class="section">
         <div class="kpi-grid" id="criticosChips" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));"></div>
       </div>
       <div class="section">
-        <div class="section-title"><span>Todas las desviaciones — <span id="criticosMesLabel"></span></span><span class="line"></span></div>
-        <div class="card">
-          <div class="cap" style="margin-bottom:12px;">Cada indicador con meta definida, ordenado de peor a mejor. La desviación es relativa a su meta, para poder comparar entre kg, % y $.</div>
-          <div id="criticosTable"></div>
-        </div>
+        <div class="section-title"><span>Desviaciones por sección — <span id="criticosMesLabel"></span></span><span class="line"></span></div>
+        <div class="cap" style="margin-bottom:12px;">Cada indicador con meta definida, ordenado de peor a mejor dentro de su sección. La desviación es relativa a su meta, para poder comparar entre kg, % y $.</div>
+        <div id="criticosSecciones"></div>
       </div>
     </section>
 
@@ -738,6 +744,10 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
               <span class="fg-label">Máquina</span>
               <div class="segmented scroll" id="insumosMachineSeg"></div>
             </div>
+            <div class="filter-group">
+              <span class="fg-label">Mes</span>
+              <div class="segmented scroll" id="insumosMonthSeg"></div>
+            </div>
           </div>
           <div class="card">
             <h3>Mayor gasto estimado por insumo</h3>
@@ -750,6 +760,12 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
             <div id="chartInsumosSobrecosto"></div>
           </div>
           <div class="card"><div id="insumosTable"></div></div>
+
+          <div class="section-title" style="margin-top:8px;"><span>Análisis PxQ — precio × cantidad</span><span class="line"></span></div>
+          <div class="card">
+            <div class="cap" id="pxqCap" style="margin-bottom:12px;"></div>
+            <div id="pxqTable"></div>
+          </div>
 
           <div class="section-title" style="margin-top:8px;"><span>Presupuesto vs. real por categoría</span><span class="line"></span></div>
           <div class="card">
@@ -784,6 +800,10 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
             <span class="fg-label">Periodo</span>
             <div class="segmented scroll" id="productosMonthSeg"></div>
           </div>
+          <div class="filter-group">
+            <span class="fg-label">Espesor</span>
+            <div class="segmented scroll" id="productosEspesorSeg"></div>
+          </div>
         </div>
         <div class="card">
           <h3>Top 20 productos por producción</h3>
@@ -791,18 +811,23 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
           <div id="chartTopProductos"></div>
         </div>
         <div class="card">
+          <h3>Distribución por familia</h3>
+          <div class="cap" id="productosDonutCap">participación del kg producido</div>
+          <div id="chartFamiliaDonut"></div>
+        </div>
+        <div class="card">
           <h3>Producción mensual total por máquina</h3>
-          <div class="cap">kg — todas las máquinas, vista anual completa</div>
+          <div class="cap" id="productosMaqMesCap">kg</div>
           <div id="chartProdMaquinaMes"></div>
         </div>
         <div class="card">
           <h3>Producción por espesor, mensual</h3>
-          <div class="cap">kg — por espesor, vista anual completa</div>
+          <div class="cap" id="productosEspMesCap">kg</div>
           <div id="chartEspesorMesKg"></div>
         </div>
         <div class="card">
           <h3>Producción por espesor, anual</h3>
-          <div class="cap">kg totales del año por espesor</div>
+          <div class="cap" id="productosEspAnualCap">kg totales por espesor</div>
           <div id="chartEspesorAnualKg"></div>
         </div>
       </div>
@@ -835,6 +860,11 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
           <h3>Pareto de chatarra (80/20)</h3>
           <div class="cap" id="paretoCap"></div>
           <div id="chartPareto"></div>
+        </div>
+        <div class="card">
+          <h3>Pareto de producción (80/20)</h3>
+          <div class="cap" id="paretoProdCap"></div>
+          <div id="chartParetoProd"></div>
         </div>
         <div class="card">
           <div class="cap" id="skuResultCount" style="margin-bottom:10px;"></div>
