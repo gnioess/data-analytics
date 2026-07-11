@@ -1542,15 +1542,15 @@
   function renderBubbleChart(container, opts) {
     // opts: {categories, series:[{label,color,values(0..1 y-axis),sizes(kg, bubble area)}], formatValue, formatSize}
     // one bubble per article × month: center label = kg (formatSize), outside label = full article name.
-    // Every article is shown (no top-N cap) — each bubble is given horizontal room sized to
-    // fit its full label so names never truncate or overlap; the chart grows wider instead of
-    // cramming, and the card scrolls horizontally when it doesn't fit.
+    // Every article is shown (no top-N cap), but the chart stays a fixed width that fits the
+    // page (no horizontal scrollbar): crowded months push their labels up onto extra vertical
+    // tiers instead of pushing the chart wider, and bubbles shrink a little in busy months.
     chartUid++;
     var series = opts.series;
     var nS = series.length;
     var n = opts.categories.length;
-    var H = 360, padL = 46, padR = 20, padT = 50, padB = 34;
-    var plotH = H - padT - padB;
+    var W = 720, padL = 46, padR = 20, padB = 34;
+    var plotW = W - padL - padR, plotH = 230;
 
     var allVals = [];
     series.forEach(function (s) { s.values.forEach(function (v) { if (isNum(v)) allVals.push(v); }); });
@@ -1560,39 +1560,64 @@
     var allSizes = [];
     series.forEach(function (s) { s.sizes.forEach(function (v) { if (isNum(v) && v > 0) allSizes.push(v); }); });
     var maxSize = allSizes.length ? Math.max.apply(null, allSizes) : 1;
-    var minR = 8, maxR = nS > 1 ? 22 : 30;
-    function radius(s) {
+    var minR = 6, maxRBase = nS > 1 ? 20 : 28;
+    function radius(s, capR) {
       if (!isNum(s) || s <= 0 || !maxSize) return 0;
-      return minR + Math.sqrt(s / maxSize) * (maxR - minR);
+      return minR + Math.sqrt(s / maxSize) * (capR - minR);
     }
     // rough width (px) a horizontal label needs at the 9px bold font used for name labels
-    function labelW(text) { return Math.max(46, Math.min(260, text.length * 5.6 + 16)); }
+    function labelW(text) { return Math.max(40, Math.min(220, text.length * 5.4 + 14)); }
 
-    // bucket every (article, month) point into its category slot, then lay slots out
-    // left-to-right, each wide enough to fit all its items side by side without overlap.
+    var bandW = plotW / n;
+    function xBase(i) { return padL + bandW * i + bandW / 2; }
+
+    // bucket every (article, month) point into its category band, spread evenly across the
+    // band's fixed width, and shrink the bubble radius a bit when many items share a band.
     var slots = [];
     for (var i = 0; i < n; i++) slots.push([]);
     series.forEach(function (s, si) {
       s.values.forEach(function (val, i) {
         if (!isNum(val)) return;
-        slots[i].push({ si: si, i: i, val: val, size: s.sizes[i], label: s.label, color: s.color });
+        slots[i].push({ val: val, size: s.sizes[i], label: s.label, color: s.color });
       });
     });
-    var gap = 10, interSlot = 26;
-    var slotWidths = slots.map(function (items) {
-      if (!items.length) return 60;
-      var w = items.reduce(function (acc, it) { return acc + labelW(it.label); }, 0) + gap * (items.length - 1);
-      return Math.max(60, w);
+    var items = [];
+    slots.forEach(function (list, i) {
+      var bandLeft = padL + bandW * i;
+      var count = list.length;
+      var capR = count > 1 ? Math.min(maxRBase, Math.max(minR + 2, bandW / (count * 2.1))) : maxRBase;
+      list.forEach(function (it, idx) {
+        var sub = bandW / count;
+        items.push({
+          cx: bandLeft + sub * (idx + 0.5), val: it.val, size: it.size, label: it.label, color: it.color,
+          cat: opts.categories[i], r: Math.max(3, radius(it.size, capR))
+        });
+      });
     });
-    var plotW = slotWidths.reduce(function (a, b) { return a + b; }, 0) + interSlot * Math.max(0, n - 1);
-    var W = padL + plotW + padR;
 
-    var slotStart = [];
-    var acc = padL;
-    for (var si2 = 0; si2 < n; si2++) { slotStart.push(acc); acc += slotWidths[si2] + interSlot; }
-    function xBase(i) { return slotStart[i] + slotWidths[i] / 2; }
+    // greedy label-tier assignment: sort by x, place each label in the first tier whose
+    // previous label doesn't overlap it horizontally — crowding grows the chart taller via
+    // extra tiers, never wider, so the whole chart always fits the page. Once a sane number
+    // of tiers is reached, further labels are dropped (bubble + hover tooltip still show them)
+    // instead of letting one very crowded band blow the chart out to thousands of pixels tall.
+    var tierGap = 13, MAX_TIERS = 11;
+    var tierEndX = [];
+    items.slice().sort(function (a, b) { return a.cx - b.cx; }).forEach(function (it) {
+      var half = labelW(it.label) / 2 + 3;
+      var t = 0;
+      while (tierEndX[t] != null && tierEndX[t] > it.cx - half) t++;
+      if (t < MAX_TIERS) tierEndX[t] = it.cx + half;
+      it.tier = t;
+      it.hideLabel = t >= MAX_TIERS;
+    });
+    var maxTier = Math.min(tierEndX.length ? tierEndX.length - 1 : 0, MAX_TIERS - 1);
+    var maxR = items.length ? Math.max.apply(null, items.map(function (it) { return it.r; })) : minR;
+    var padT = Math.max(46, maxR + 20 + (maxTier + 1) * tierGap);
+    var H = padT + plotH + padB;
+
     function y(v) { return padT + plotH - (v / maxV) * plotH; }
     var baseline = y(0);
+    items.forEach(function (it) { it.cy = y(it.val); });
 
     var gridLines = 4, gridHtml = '', labelsHtml = '';
     for (var g = 0; g <= gridLines; g++) {
@@ -1610,30 +1635,27 @@
     var tipId = 'tip' + chartUid;
     var bubbles = [];
     var uid = 0;
-    slots.forEach(function (items, i) {
-      var totalW = items.reduce(function (acc, it) { return acc + labelW(it.label); }, 0) + gap * (items.length - 1);
-      var cursor = xBase(i) - totalW / 2;
-      items.forEach(function (it) {
-        var w = labelW(it.label);
-        var cx = cursor + w / 2;
-        cursor += w + gap;
-        var r = Math.max(3, radius(it.size));
-        var cy = y(it.val);
-        uid++;
-        bubblesHtml += '<circle class="bubble" data-u="' + uid + '" cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="' + it.color + '" fill-opacity="0.35" stroke="' + it.color + '" stroke-width="2"></circle>';
-        if (isNum(it.size) && it.size > 0 && r >= 13) {
-          centerLabelsHtml += '<text class="bubble-center-label" data-u="' + uid + '" x="' + cx + '" y="' + (cy + 3.5) + '" text-anchor="middle">' + opts.formatSize(it.size) + '</text>';
-        }
-        var nameY = cy - r - 7;
-        // leader line points straight up from the bubble edge to its (horizontal) name label
-        leadersHtml += '<line class="bubble-leader" data-u="' + uid + '" x1="' + cx + '" x2="' + cx + '" y1="' + (cy - r) + '" y2="' + (nameY + 3) + '" stroke="' + it.color + '"></line>';
-        nameLabelsHtml += '<text class="bubble-name-label" data-u="' + uid + '" x="' + cx + '" y="' + nameY + '" text-anchor="middle" fill="' + it.color + '">' + escapeHtml(it.label) + '</text>';
-        bubbles.push({ uid: uid, label: it.label, cat: opts.categories[i], val: it.val, size: it.size, cx: cx, cy: cy, r: r });
-      });
+    items.forEach(function (it) {
+      uid++;
+      var cx = it.cx, cy = it.cy, r = it.r;
+      bubblesHtml += '<circle class="bubble" data-u="' + uid + '" cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="' + it.color + '" fill-opacity="0.35" stroke="' + it.color + '" stroke-width="2"></circle>';
+      if (isNum(it.size) && it.size > 0 && r >= 13) {
+        centerLabelsHtml += '<text class="bubble-center-label" data-u="' + uid + '" x="' + cx + '" y="' + (cy + 3.5) + '" text-anchor="middle">' + opts.formatSize(it.size) + '</text>';
+      }
+      if (!it.hideLabel) {
+        var nameY = cy - r - 6 - it.tier * tierGap;
+        // keep the label fully inside the chart even near the left/right edges — the leader
+        // line then angles slightly instead of clipping the text off the canvas
+        var half = labelW(it.label) / 2;
+        var labelX = Math.min(Math.max(cx, padL + half), W - padR - half);
+        leadersHtml += '<line class="bubble-leader" data-u="' + uid + '" x1="' + cx + '" x2="' + labelX + '" y1="' + (cy - r) + '" y2="' + (nameY + 3) + '" stroke="' + it.color + '"></line>';
+        nameLabelsHtml += '<text class="bubble-name-label" data-u="' + uid + '" x="' + labelX + '" y="' + nameY + '" text-anchor="middle" fill="' + it.color + '">' + escapeHtml(it.label) + '</text>';
+      }
+      bubbles.push({ uid: uid, label: it.label, cat: it.cat, val: it.val, size: it.size, cx: cx, cy: cy, r: r });
     });
 
     container.innerHTML = '<div class="chart-wrap">' +
-      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" style="width:' + W + 'px;max-width:none;" id="svg' + chartUid + '">' +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
       '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
       gridHtml + labelsHtml + leadersHtml + bubblesHtml + centerLabelsHtml + nameLabelsHtml + xLabelsHtml +
       '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
@@ -1666,6 +1688,7 @@
       if (nameLabel) { nameLabel.addEventListener('mousemove', activate); nameLabel.addEventListener('mouseleave', deactivate); }
       if (centerLabel) { centerLabel.addEventListener('mousemove', activate); centerLabel.addEventListener('mouseleave', deactivate); }
     });
+    return { hiddenLabels: items.filter(function (it) { return it.hideLabel; }).length };
   }
 
   function renderDeviationChart(container, opts) {
@@ -2125,6 +2148,10 @@
     var skuMachineOptions = [{ value: '', label: 'Todas' }].concat(
       machines.map(function (m) { return { value: m, label: machineShortLabel(m, STATE.data.machineCodes) }; })
     );
+    // default to a single machine (not "Todas") so the bubble chart starts on a
+    // readable view instead of every article across every machine at once
+    if (STATE.sku.maquina == null && machines.length) STATE.sku.maquina = machines[0];
+    if (STATE.productos.maquina == null && machines.length) STATE.productos.maquina = machines[0];
     renderSegmented('skuMachineSeg', skuMachineOptions, STATE.sku.maquina || '', function (val) {
       STATE.sku.maquina = val || null;
       renderSkuBuscador();
@@ -2244,7 +2271,7 @@
     // chart to that one category so bubbles spread across the full plot width instead of
     // cramming into one narrow 1/12th-wide band (which caused labels/bubbles to overlap).
     var mesIdx = STATE.sku.mes ? MESES.indexOf(STATE.sku.mes) : -1;
-    renderBubbleChart(el('chartSkuBubble'), {
+    var bubbleInfo = renderBubbleChart(el('chartSkuBubble'), {
       categories: mesIdx >= 0 ? [MESES_ABBR[mesIdx]] : MESES_ABBR,
       series: art.series.map(function (s, i) {
         var months = mesIdx >= 0 ? [s.months[mesIdx]] : s.months;
@@ -2258,8 +2285,9 @@
       formatSize: function (v) { return fmtInt(v) + ' kg'; }
     });
     var skuFilterTxt = (STATE.sku.mes ? STATE.sku.mes : 'año completo') + ', ' + (STATE.sku.maquina ? machineShortLabel(STATE.sku.maquina, STATE.data.machineCodes) : 'todas las máquinas');
+    var hiddenTxt = bubbleInfo && bubbleInfo.hiddenLabels ? ' (' + fmtInt(bubbleInfo.hiddenLabels) + ' sin etiqueta visible por espacio — pasa el mouse sobre la burbuja)' : '';
     el('chartSkuBubble').parentNode.querySelector('.cap').textContent = art.series.length === 0 ? 'Sin artículos con chatarra para este filtro (' + skuFilterTxt + ')' :
-      (fmtInt(art.totalArticles) + ' artículo' + (art.totalArticles === 1 ? '' : 's') + ' con chatarra — ' + skuFilterTxt);
+      (fmtInt(art.totalArticles) + ' artículo' + (art.totalArticles === 1 ? '' : 's') + ' con chatarra — ' + skuFilterTxt + hiddenTxt);
 
     var rows = STATE.engine.skuBuscador(STATE.year, STATE.sku);
     var total = rows.length;
