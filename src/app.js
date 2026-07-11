@@ -1018,15 +1018,17 @@
       var chatRows = D.chatarra.filter(function (c) {
         return c.anio === anio && c.codSolic && (mesN == null || c.mes === mesN) && (!opts.maquina || c.maquina === opts.maquina);
       });
+      // one row per SKU × máquina × mes — the month shown is always the actual month the
+      // production/chatarra was recorded in, not an aggregate across the whole filtered range
       var map = {};
       prodRows.forEach(function (p) {
-        var key = p.sku + '|' + p.maquina;
-        if (!map[key]) map[key] = { sku: p.sku, descripcion: p.descripcion, familia: p.familia, maquina: p.maquina, prodKg: 0, chatKg: 0 };
+        var key = p.sku + '|' + p.maquina + '|' + p.mes;
+        if (!map[key]) map[key] = { sku: p.sku, descripcion: p.descripcion, familia: p.familia, maquina: p.maquina, mes: p.mes, prodKg: 0, chatKg: 0 };
         if (isNum(p.totalUnEst)) map[key].prodKg += p.totalUnEst;
       });
       chatRows.forEach(function (c) {
-        var key = c.codSolic + '|' + c.maquina;
-        if (!map[key]) map[key] = { sku: c.codSolic, descripcion: c.descripcion, familia: c.familia, maquina: c.maquina, prodKg: 0, chatKg: 0 };
+        var key = c.codSolic + '|' + c.maquina + '|' + c.mes;
+        if (!map[key]) map[key] = { sku: c.codSolic, descripcion: c.descripcion, familia: c.familia, maquina: c.maquina, mes: c.mes, prodKg: 0, chatKg: 0 };
         if (isNum(c.totalUnEst)) map[key].chatKg += c.totalUnEst;
       });
       var rows = Object.keys(map).map(function (k) {
@@ -1035,6 +1037,7 @@
         // recorded scrap is a genuine 0% chatarra, not missing data, and vice versa
         var total = r.prodKg + r.chatKg;
         r.chatPct = total > 0 ? r.chatKg / total : null;
+        r.mesLabel = MESES_ABBR[r.mes - 1] || '-';
         return r;
       });
       if (opts.query) {
@@ -1043,7 +1046,7 @@
           return normKey(String(r.sku)).indexOf(q) >= 0 || normKey(r.descripcion).indexOf(q) >= 0;
         });
       }
-      rows.sort(function (a, b) { return (b.prodKg || 0) - (a.prodKg || 0); });
+      rows.sort(function (a, b) { return a.mes - b.mes || (b.prodKg || 0) - (a.prodKg || 0); });
       return rows;
     }
 
@@ -1630,6 +1633,13 @@
     opts.categories.forEach(function (cat, i) {
       xLabelsHtml += '<text class="axis-label" x="' + xBase(i) + '" y="' + (H - 10) + '" text-anchor="middle">' + cat + '</text>';
     });
+    // dashed vertical rule between each month's band so it's clear where one month's
+    // articles end and the next month's begin
+    var monthSepHtml = '';
+    for (var sepI = 1; sepI < n; sepI++) {
+      var sepX = padL + bandW * sepI;
+      monthSepHtml += '<line class="month-sep" x1="' + sepX + '" x2="' + sepX + '" y1="8" y2="' + (H - padB + 6) + '"></line>';
+    }
 
     var bubblesHtml = '', centerLabelsHtml = '', nameLabelsHtml = '', leadersHtml = '';
     var tipId = 'tip' + chartUid;
@@ -1657,7 +1667,7 @@
     container.innerHTML = '<div class="chart-wrap">' +
       '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
       '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
-      gridHtml + labelsHtml + leadersHtml + bubblesHtml + centerLabelsHtml + nameLabelsHtml + xLabelsHtml +
+      gridHtml + monthSepHtml + labelsHtml + leadersHtml + bubblesHtml + centerLabelsHtml + nameLabelsHtml + xLabelsHtml +
       '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
 
     var tip = container.querySelector('#' + tipId);
@@ -2295,11 +2305,12 @@
     el('skuResultCount').textContent = total === 0 ? 'Sin resultados' :
       (total > SKU_ROW_LIMIT ? 'Mostrando ' + SKU_ROW_LIMIT + ' de ' + fmtInt(total) + ' resultados — refina la búsqueda para ver más' : fmtInt(total) + ' resultado' + (total === 1 ? '' : 's'));
 
-    var html = '<table class="wide"><thead><tr><th>Descripción</th><th>Máquina</th><th>Producción (kg)</th><th>Chatarra (kg)</th><th>Chatarra %</th></tr></thead><tbody>';
+    var html = '<table class="wide"><thead><tr><th>Descripción</th><th>Máquina</th><th>Mes</th><th>Producción (kg)</th><th>Chatarra (kg)</th><th>Chatarra %</th></tr></thead><tbody>';
     shown.forEach(function (r) {
       html += '<tr>' +
         '<td>' + escapeHtml(r.descripcion || '-') + '</td>' +
         '<td>' + escapeHtml(machineShortLabel(r.maquina, STATE.data.machineCodes)) + '</td>' +
+        '<td>' + escapeHtml(r.mesLabel) + '</td>' +
         tdv(r.prodKg, fmtInt) + tdv(r.chatKg, fmtInt) +
         tdv(r.chatPct, function (v) { return fmtPct(v, 2); }) +
         '</tr>';
