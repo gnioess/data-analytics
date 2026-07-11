@@ -1033,12 +1033,41 @@
       return rows;
     }
 
+    /* ---- Tendencia mensual de chatarra para el filtro actual del buscador SKU ---- */
+    function skuMonthlyTrend(anio, opts) {
+      opts = opts || {};
+      var q = opts.query ? normKey(opts.query) : null;
+      return MESES.map(function (mesNombre, i) {
+        var mesN = i + 1;
+        var prodRows = D.produccion.filter(function (p) {
+          if (p.anio !== anio || p.mes !== mesN || !p.sku) return false;
+          if (opts.maquina && p.maquina !== opts.maquina) return false;
+          if (q && normKey(String(p.sku)).indexOf(q) < 0 && normKey(p.descripcion).indexOf(q) < 0) return false;
+          return true;
+        });
+        var chatRows = D.chatarra.filter(function (c) {
+          if (c.anio !== anio || c.mes !== mesN || !c.codSolic) return false;
+          if (opts.maquina && c.maquina !== opts.maquina) return false;
+          if (q && normKey(String(c.codSolic)).indexOf(q) < 0 && normKey(c.descripcion).indexOf(q) < 0) return false;
+          return true;
+        });
+        var prodKg = sum(prodRows.map(function (p) { return p.totalUnEst; }));
+        var chatKg = sum(chatRows.map(function (c) { return c.totalUnEst; }));
+        var total = prodKg + chatKg;
+        return {
+          mes: mesNombre, mesAbbr: MESES_ABBR[i],
+          prodKg: prodKg, chatKg: chatKg,
+          chatPct: total > 0 ? chatKg / total : null
+        };
+      });
+    }
+
     return {
       resumenPlanta: resumenPlanta, kpiHeader: kpiHeader, presupuesto: presupuesto,
       detalleMes: detalleMes, detalleAnio: detalleAnio, espesorAnalysis: espesorAnalysis,
       pptoTotalVal: pptoTotalVal, oeeMetaVal: oeeMetaVal,
       torreControl: torreControl, aporteOEEPorMaquina: aporteOEEPorMaquina, productMix: productMix,
-      skuBuscador: skuBuscador
+      skuBuscador: skuBuscador, skuMonthlyTrend: skuMonthlyTrend
     };
   }
 
@@ -1448,6 +1477,85 @@
         barEl.classList.add('bar-active');
       });
       barEl.addEventListener('mouseleave', function () { tip.style.opacity = 0; barEl.classList.remove('bar-active'); });
+    });
+  }
+
+  function renderBubbleChart(container, opts) {
+    // opts: {categories, values (0..1, y-axis), sizes (kg, bubble area), formatValue, formatSize, colorVar}
+    chartUid++;
+    var W = 680, H = 300, padL = 44, padR = 20, padT = 24, padB = 34;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var n = opts.categories.length;
+
+    var vals = opts.values.filter(isNum);
+    var maxV = vals.length ? Math.max.apply(null, vals) : 1;
+    maxV = maxV * 1.3 || 1;
+
+    function x(i) { return n <= 1 ? padL + plotW / 2 : padL + plotW * i / (n - 1); }
+    function y(v) { return padT + plotH - (v / maxV) * plotH; }
+    var baseline = y(0);
+
+    var sizes = opts.sizes.filter(isNum).filter(function (s) { return s > 0; });
+    var maxSize = sizes.length ? Math.max.apply(null, sizes) : 1;
+    var minR = 7, maxR = 32;
+    function radius(s) {
+      if (!isNum(s) || s <= 0 || !maxSize) return 0;
+      return minR + Math.sqrt(s / maxSize) * (maxR - minR);
+    }
+
+    var gridLines = 4, gridHtml = '', labelsHtml = '';
+    for (var g = 0; g <= gridLines; g++) {
+      var v = maxV * g / gridLines;
+      var yy = y(v);
+      gridHtml += '<line class="grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + yy + '" y2="' + yy + '"></line>';
+      labelsHtml += '<text class="axis-label" x="' + (padL - 8) + '" y="' + (yy + 3) + '" text-anchor="end">' + opts.formatValue(v, true) + '</text>';
+    }
+    var xLabelsHtml = '';
+    opts.categories.forEach(function (cat, i) {
+      xLabelsHtml += '<text class="axis-label" x="' + x(i) + '" y="' + (H - 10) + '" text-anchor="middle">' + cat + '</text>';
+    });
+
+    var bubblesHtml = '', valueLabelsHtml = '';
+    var tipId = 'tip' + chartUid;
+    var bubbles = [];
+    opts.categories.forEach(function (cat, i) {
+      var val = opts.values[i], size = opts.sizes[i];
+      if (!isNum(val)) return;
+      var r = Math.max(3, radius(size));
+      var cy = y(val);
+      bubblesHtml += '<circle class="bubble" data-i="' + i + '" cx="' + x(i) + '" cy="' + cy + '" r="' + r + '" fill="' + opts.colorVar + '" fill-opacity="0.32" stroke="' + opts.colorVar + '" stroke-width="2"></circle>';
+      valueLabelsHtml += '<text class="value-label" data-i="' + i + '" x="' + x(i) + '" y="' + (cy - r - 6) + '" text-anchor="middle" fill="' + opts.colorVar + '">' + opts.formatValue(val) + '</text>';
+      bubbles.push({ i: i, cat: cat, val: val, size: size, cx: x(i), cy: cy, r: r });
+    });
+
+    container.innerHTML = '<div class="chart-wrap">' +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
+      '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
+      gridHtml + labelsHtml + bubblesHtml + valueLabelsHtml + xLabelsHtml +
+      '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
+
+    var tip = container.querySelector('#' + tipId);
+    var wrapEl = container.querySelector('.chart-wrap');
+    container.querySelectorAll('.bubble').forEach(function (bEl) {
+      var i = parseInt(bEl.getAttribute('data-i'), 10);
+      var b = bubbles.filter(function (x) { return x.i === i; })[0];
+      if (!b) return;
+      var label = container.querySelector('.value-label[data-i="' + i + '"]');
+      function activate() {
+        var rect = wrapEl.getBoundingClientRect();
+        var scale = rect.width / W;
+        tip.style.left = (b.cx * scale) + 'px';
+        tip.style.top = ((b.cy - b.r) * scale) + 'px';
+        tip.style.opacity = 1;
+        tip.innerHTML = '<strong>' + b.cat + '</strong><br>% Chatarra: ' + opts.formatValue(b.val) +
+          (isNum(b.size) ? '<br>Chatarra: ' + opts.formatSize(b.size) : '');
+        bEl.classList.add('bar-active');
+        if (label) label.classList.add('value-label-active');
+      }
+      function deactivate() { tip.style.opacity = 0; bEl.classList.remove('bar-active'); if (label) label.classList.remove('value-label-active'); }
+      bEl.addEventListener('mousemove', activate);
+      bEl.addEventListener('mouseleave', deactivate);
+      if (label) { label.addEventListener('mousemove', activate); label.addEventListener('mouseleave', deactivate); }
     });
   }
 
@@ -2001,6 +2109,16 @@
 
   var SKU_ROW_LIMIT = 300;
   function renderSkuBuscador() {
+    var trend = STATE.engine.skuMonthlyTrend(STATE.year, { maquina: STATE.sku.maquina, query: STATE.sku.query });
+    renderBubbleChart(el('chartSkuBubble'), {
+      categories: trend.map(function (m) { return m.mesAbbr; }),
+      values: trend.map(function (m) { return m.chatPct; }),
+      sizes: trend.map(function (m) { return m.chatKg; }),
+      formatValue: function (v) { return fmtPct(v, 1); },
+      formatSize: function (v) { return fmtInt(v) + ' kg'; },
+      colorVar: 'var(--series-6)'
+    });
+
     var rows = STATE.engine.skuBuscador(STATE.year, STATE.sku);
     var total = rows.length;
     var shown = rows.slice(0, SKU_ROW_LIMIT);
