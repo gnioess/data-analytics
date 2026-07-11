@@ -540,17 +540,40 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
           <p class="cap" style="margin:0;">Este Excel no incluye la hoja "Ppto Insumos", así que no hay datos de costos de insumos para mostrar.</p>
         </div>
         <div id="insumosContent">
+          <div class="filter-bar">
+            <div class="filter-group">
+              <span class="fg-label">Máquina</span>
+              <div class="segmented scroll" id="insumosMachineSeg"></div>
+            </div>
+          </div>
           <div class="card">
             <h3>Mayor gasto estimado por insumo</h3>
-            <div class="cap">consumo × precio promedio — todas las máquinas</div>
+            <div class="cap" id="insumosGastoCap">consumo × precio promedio — todas las máquinas</div>
             <div id="chartInsumosGasto"></div>
           </div>
           <div class="card">
             <h3>Mayor sobrecosto vs. precio IPC</h3>
-            <div class="cap">último precio de compra vs. precio ajustado por IPC</div>
+            <div class="cap" id="insumosSobrecostoCap">último precio de compra vs. precio ajustado por IPC</div>
             <div id="chartInsumosSobrecosto"></div>
           </div>
           <div class="card"><div id="insumosTable"></div></div>
+
+          <div class="section-title" style="margin-top:8px;"><span>Presupuesto vs. real por categoría</span><span class="line"></span></div>
+          <div class="card">
+            <h3>Aceite y Lubricante</h3>
+            <div class="cap" id="costosAceiteCap"></div>
+            <div id="chartCostosAceite"></div>
+          </div>
+          <div class="card">
+            <h3>Insumos de Fábrica</h3>
+            <div class="cap" id="costosInsumosFabCap"></div>
+            <div id="chartCostosInsumosFab"></div>
+          </div>
+          <div class="card">
+            <h3>Embalajes</h3>
+            <div class="cap" id="costosEmbalajesCap"></div>
+            <div id="chartCostosEmbalajes"></div>
+          </div>
         </div>
       </div>
     </section>

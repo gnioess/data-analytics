@@ -540,17 +540,40 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
           <p class="cap" style="margin:0;">Este Excel no incluye la hoja "Ppto Insumos", así que no hay datos de costos de insumos para mostrar.</p>
         </div>
         <div id="insumosContent">
+          <div class="filter-bar">
+            <div class="filter-group">
+              <span class="fg-label">Máquina</span>
+              <div class="segmented scroll" id="insumosMachineSeg"></div>
+            </div>
+          </div>
           <div class="card">
             <h3>Mayor gasto estimado por insumo</h3>
-            <div class="cap">consumo × precio promedio — todas las máquinas</div>
+            <div class="cap" id="insumosGastoCap">consumo × precio promedio — todas las máquinas</div>
             <div id="chartInsumosGasto"></div>
           </div>
           <div class="card">
             <h3>Mayor sobrecosto vs. precio IPC</h3>
-            <div class="cap">último precio de compra vs. precio ajustado por IPC</div>
+            <div class="cap" id="insumosSobrecostoCap">último precio de compra vs. precio ajustado por IPC</div>
             <div id="chartInsumosSobrecosto"></div>
           </div>
           <div class="card"><div id="insumosTable"></div></div>
+
+          <div class="section-title" style="margin-top:8px;"><span>Presupuesto vs. real por categoría</span><span class="line"></span></div>
+          <div class="card">
+            <h3>Aceite y Lubricante</h3>
+            <div class="cap" id="costosAceiteCap"></div>
+            <div id="chartCostosAceite"></div>
+          </div>
+          <div class="card">
+            <h3>Insumos de Fábrica</h3>
+            <div class="cap" id="costosInsumosFabCap"></div>
+            <div id="chartCostosInsumosFab"></div>
+          </div>
+          <div class="card">
+            <h3>Embalajes</h3>
+            <div class="cap" id="costosEmbalajesCap"></div>
+            <div id="chartCostosEmbalajes"></div>
+          </div>
         </div>
       </div>
     </section>
@@ -985,8 +1008,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   }
 
   function parsePptoValesConsumo(aoa) {
-    var out = {}; // out[machine][mes] = summed budget $ across cost-centers
-    if (!aoa || aoa.length < 2) return out;
+    // "Ppto Vales de consumo" sheet: one row per (Centro de Costo, Máquina), 12 month
+    // budget ($) columns. Returns both the machine-total sum (existing behavior, used
+    // for the plant-wide budget comparison) and the breakdown kept by category, since
+    // individual cost-center rows (Aceite y Lubricante, Insumos de Fábrica, Embalajes,
+    // etc.) are needed for the per-category budget-vs-real analysis.
+    var total = {}; // total[machine][mes] = summed budget $ across cost-centers
+    var porCategoria = {}; // porCategoria[machine][categoria][mes] = budget $
+    if (!aoa || aoa.length < 2) return { total: total, porCategoria: porCategoria };
     var header = aoa[0];
     var monthCols = [];
     for (var c = 2; c < header.length; c++) {
@@ -996,18 +1025,28 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     }
     for (var r = 1; r < aoa.length; r++) {
       var row = aoa[r];
+      var categoria = trimStr(row[0]);
       var maq = trimStr(row[1]);
       if (!maq) continue;
-      if (!out[maq]) {
-        out[maq] = {};
-        monthCols.forEach(function (mc) { out[maq][mc.mes] = 0; });
+      if (!total[maq]) {
+        total[maq] = {};
+        monthCols.forEach(function (mc) { total[maq][mc.mes] = 0; });
+      }
+      if (categoria) {
+        if (!porCategoria[maq]) porCategoria[maq] = {};
+        if (!porCategoria[maq][categoria]) {
+          porCategoria[maq][categoria] = {};
+          monthCols.forEach(function (mc) { porCategoria[maq][categoria][mc.mes] = 0; });
+        }
       }
       monthCols.forEach(function (mc) {
         var v = toNum(row[mc.col]);
-        if (v != null) out[maq][mc.mes] += v;
+        if (v == null) return;
+        total[maq][mc.mes] += v;
+        if (categoria) porCategoria[maq][categoria][mc.mes] += v;
       });
     }
-    return out;
+    return { total: total, porCategoria: porCategoria };
   }
 
   function parseMetas(sheets) {
@@ -1185,7 +1224,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var oee = wsOEE ? parseOEEPl(sheetToAOA(wsOEE)) : { machines: [], data: {} };
     var horasAtraso = wsHoras ? parseHorasAtraso(sheetToAOA(wsHoras)) : {};
     var pptoProduccion = wsPptoProd ? parsePptoProduccion(sheetToAOA(wsPptoProd)) : {};
-    var pptoVales = wsPptoVales ? parsePptoValesConsumo(sheetToAOA(wsPptoVales)) : {};
+    var pptoValesParsed = wsPptoVales ? parsePptoValesConsumo(sheetToAOA(wsPptoVales)) : { total: {}, porCategoria: {} };
+    var pptoVales = pptoValesParsed.total;
+    var pptoValesPorCategoria = pptoValesParsed.porCategoria;
     var pptoInsumos = wsPptoInsumos ? parsePptoInsumos(sheetToAOA(wsPptoInsumos)) : [];
     var metasCandidates = [wsMetas, wsNoBorrar].filter(Boolean).map(sheetToAOA);
     var metas = parseMetas(metasCandidates);
@@ -1221,7 +1262,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     return {
       produccion: produccion, chatarra: chatarra, vales: vales, bobinasM: bobinasM,
       prodResumenAnu: prodResumenAnu, oee: oee, horasAtraso: horasAtraso,
-      pptoProduccion: pptoProduccion, pptoVales: pptoVales, metas: metas,
+      pptoProduccion: pptoProduccion, pptoVales: pptoVales, pptoValesPorCategoria: pptoValesPorCategoria, metas: metas,
       rechazoTabla: rechazoTabla, machines: machines, groupMachines: groupMachines, years: years,
       machineCodes: machineCodes, pptoInsumos: pptoInsumos
     };
@@ -1332,6 +1373,47 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       if (!m) return null;
       var v = m[mesNombre];
       return isNum(v) ? v : null;
+    }
+
+    /* ---- Costos e Insumos: real vs. presupuesto por categoría (mensual) ----
+     * Real = "Vales de Consumo" transactions (Nombre de cuenta = categoría) filtered
+     * to the selected machine(s). Presupuesto = "Ppto Vales de consumo" sheet, same
+     * categoría/máquina breakdown. Both keyed by the exact category label (e.g.
+     * "Aceite y Lubricante", "Insumos de Fábrica", "Embalajes"). */
+    function costosCategoria(anio, categoria, opts) {
+      opts = opts || {};
+      var catNorm = normKey(categoria);
+      var maquinas = opts.maquina ? [opts.maquina] : D.machines;
+      function pptoForMonth(mesNombre) {
+        var total = 0, has = false;
+        maquinas.forEach(function (maq) {
+          var byCat = D.pptoValesPorCategoria[maq];
+          if (!byCat) return;
+          Object.keys(byCat).forEach(function (catKey) {
+            if (normKey(catKey) !== catNorm) return;
+            var v = byCat[catKey][mesNombre];
+            if (isNum(v)) { total += v; has = true; }
+          });
+        });
+        return has ? total : null;
+      }
+      var months = MESES.map(function (mesNombre, i) {
+        var mesN = i + 1;
+        var real = 0, hasReal = false;
+        D.vales.forEach(function (r) {
+          if (r.anio === anio && r.mes === mesN && normKey(r.cuenta) === catNorm && maquinas.indexOf(r.ccosto) >= 0) {
+            real += r.valor; hasReal = true;
+          }
+        });
+        var realVal = hasReal ? real : null;
+        var pptoVal = pptoForMonth(mesNombre);
+        var desviacion = (realVal != null && pptoVal != null) ? realVal - pptoVal : null;
+        var desviacionPct = (desviacion != null && pptoVal) ? desviacion / pptoVal : null;
+        return { mes: mesNombre, mesAbbr: MESES_ABBR[i], real: realVal, ppto: pptoVal, desviacion: desviacion, desviacionPct: desviacionPct };
+      });
+      var realMonths = months.map(function (m) { return m.real; }).filter(isNum);
+      var promedioAnual = realMonths.length ? sum(realMonths) / realMonths.length : null;
+      return { months: months, promedioAnual: promedioAnual };
     }
 
     function oeeMetaVal(label, mesNombre) {
@@ -1780,7 +1862,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       detalleMes: detalleMes, detalleAnio: detalleAnio, espesorAnalysis: espesorAnalysis,
       pptoTotalVal: pptoTotalVal, oeeMetaVal: oeeMetaVal,
       torreControl: torreControl, aporteOEEPorMaquina: aporteOEEPorMaquina, productMix: productMix,
-      produccionMensualPorMaquina: produccionMensualPorMaquina,
+      produccionMensualPorMaquina: produccionMensualPorMaquina, costosCategoria: costosCategoria,
       skuBuscador: skuBuscador, skuMonthlyTrend: skuMonthlyTrend, skuArticleMonthlyTrend: skuArticleMonthlyTrend
     };
   }
@@ -2483,7 +2565,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   var STATE = {
     data: null, engine: null, year: null, month: null, machine: null,
     sku: { maquina: null, mes: null, query: '' },
-    productos: { maquina: null, mes: null }
+    productos: { maquina: null, mes: null },
+    insumos: { maquina: null }
   };
 
   function el(id) { return document.getElementById(id); }
@@ -2493,6 +2576,12 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1) + 'M';
     if (Math.abs(v) >= 1e3) return Math.round(v / 1e3) + 'k';
     return Math.round(v);
+  }
+  function fmtMoneyTick(v, isAxisTick) {
+    if (!isAxisTick) return fmtMoney(v);
+    if (Math.abs(v) >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
+    if (Math.abs(v) >= 1e3) return '$' + Math.round(v / 1e3) + 'k';
+    return fmtMoney(v);
   }
 
   var ICON_GAUGE = '<path d="M12 21a9 9 0 1 1 9-9"></path><line x1="12" y1="12" x2="16" y2="8"></line><circle cx="12" cy="12" r="1"></circle>';
@@ -2831,6 +2920,11 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       STATE.productos.mes = val || null;
       renderProductos(STATE.year);
     });
+
+    renderSegmented('insumosMachineSeg', skuMachineOptions, STATE.insumos.maquina || '', function (val) {
+      STATE.insumos.maquina = val || null;
+      renderInsumos();
+    });
   }
 
   function pickDefaultMonth(anio) {
@@ -2876,7 +2970,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     }
     el('insumosEmpty').style.display = 'none';
     el('insumosContent').style.display = 'block';
-    var rk = insumosRanking(data);
+
+    var maquina = STATE.insumos.maquina;
+    var maquinaTxt = maquina ? machineShortLabel(maquina, STATE.data.machineCodes) : 'todas las máquinas';
+    var filtered = maquina ? data.filter(function (r) { return r.ccosto === maquina; }) : data;
+    var rk = insumosRanking(filtered);
+
+    el('insumosGastoCap').textContent = 'consumo × precio promedio — ' + maquinaTxt;
+    el('insumosSobrecostoCap').textContent = 'último precio de compra vs. precio ajustado por IPC — ' + maquinaTxt;
 
     renderRankedBarChart(el('chartInsumosGasto'), {
       items: rk.topGasto.map(function (r) { return { label: r.articulo, value: r.valorEstimado }; }),
@@ -2898,6 +2999,33 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     });
     html += '</tbody></table>';
     el('insumosTable').innerHTML = html;
+
+    renderCostosCategoria('Aceite y Lubricante', 'chartCostosAceite', 'costosAceiteCap', maquina, maquinaTxt);
+    renderCostosCategoria('Insumos de Fábrica', 'chartCostosInsumosFab', 'costosInsumosFabCap', maquina, maquinaTxt);
+    renderCostosCategoria('Embalajes', 'chartCostosEmbalajes', 'costosEmbalajesCap', maquina, maquinaTxt);
+  }
+
+  // "Vale de consumo" real vs "Ppto Vale de Consumo" budget, monthly, for one cost
+  // category (Aceite y Lubricante / Insumos de Fábrica / Embalajes), plus a caption
+  // comparing the annual monthly average to the current month.
+  function renderCostosCategoria(categoria, chartId, capId, maquina, maquinaTxt) {
+    var data = STATE.engine.costosCategoria(STATE.year, categoria, { maquina: maquina });
+    renderGroupedBarChart(el(chartId), {
+      categories: MESES_ABBR,
+      series: [
+        { name: 'Real', color: 'var(--series-1)', values: data.months.map(function (m) { return m.real; }) },
+        { name: 'Presupuesto', color: 'var(--text-muted)', values: data.months.map(function (m) { return m.ppto; }) }
+      ],
+      formatValue: fmtMoneyTick
+    });
+    var mesActualRow = data.months.filter(function (m) { return m.mes === STATE.month; })[0];
+    var parts = [maquinaTxt];
+    if (data.promedioAnual != null) parts.push('promedio anual: ' + fmtMoney(data.promedioAnual));
+    if (mesActualRow && mesActualRow.real != null) parts.push(STATE.month + ': ' + fmtMoney(mesActualRow.real));
+    if (mesActualRow && mesActualRow.desviacionPct != null) {
+      parts.push('desv. vs ppto: ' + fmtSigned(mesActualRow.desviacionPct, function (v) { return fmtPct(v, 0); }));
+    }
+    el(capId).textContent = parts.join(' — ');
   }
 
   function renderProductos(anio) {
