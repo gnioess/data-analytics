@@ -570,21 +570,24 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
           </div>
         </div>
         <div class="card">
-          <h3>Top 10 productos por producción</h3>
+          <h3>Top 20 productos por producción</h3>
           <div class="cap" id="productosTopCap">kg producidos en el año</div>
           <div id="chartTopProductos"></div>
         </div>
-        <div class="grid-2">
-          <div class="card">
-            <h3>Producción por familia</h3>
-            <div class="cap" id="productosFamProdCap">kg — top 10 familias</div>
-            <div id="chartFamiliaProd"></div>
-          </div>
-          <div class="card">
-            <h3>Chatarra por familia</h3>
-            <div class="cap" id="productosFamChatCap">kg — top 10 familias</div>
-            <div id="chartFamiliaChatarra"></div>
-          </div>
+        <div class="card">
+          <h3>Producción mensual total por máquina</h3>
+          <div class="cap">kg — todas las máquinas, vista anual completa</div>
+          <div id="chartProdMaquinaMes"></div>
+        </div>
+        <div class="card">
+          <h3>Producción por espesor, mensual</h3>
+          <div class="cap">kg — por espesor, vista anual completa</div>
+          <div id="chartEspesorMesKg"></div>
+        </div>
+        <div class="card">
+          <h3>Producción por espesor, anual</h3>
+          <div class="cap">kg totales del año por espesor</div>
+          <div id="chartEspesorAnualKg"></div>
         </div>
       </div>
     </section>
@@ -1638,10 +1641,20 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         return p.anio === anio && (mesN == null || p.mes === mesN) && (!opts.maquina || p.maquina === opts.maquina);
       });
       return {
-        topProductos: groupSum(prodAnio, function (r) { return r.descripcion; }).slice(0, 10),
-        porFamilia: groupSum(prodAnio, function (r) { return r.familia; }).slice(0, 10),
-        chatarraPorFamilia: groupSum(chatAnio, function (r) { return r.familia; }).slice(0, 10)
+        topProductos: groupSum(prodAnio, function (r) { return r.descripcion; }).slice(0, 20)
       };
+    }
+
+    /* ---- Producción mensual total (kg) por máquina — vista de planta, sin filtros ---- */
+    function produccionMensualPorMaquina(anio) {
+      return D.machines.map(function (maq) {
+        var values = MESES.map(function (mesNombre, i) {
+          var mesN = i + 1;
+          return sum(D.produccion.filter(function (p) { return p.anio === anio && p.mes === mesN && p.maquina === maq; })
+            .map(function (p) { return p.totalUnEst; }));
+        });
+        return { maquina: maq, values: values };
+      });
     }
 
     /* ---- Buscador de SKU: producción vs. chatarra por SKU × máquina ---- */
@@ -1767,6 +1780,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       detalleMes: detalleMes, detalleAnio: detalleAnio, espesorAnalysis: espesorAnalysis,
       pptoTotalVal: pptoTotalVal, oeeMetaVal: oeeMetaVal,
       torreControl: torreControl, aporteOEEPorMaquina: aporteOEEPorMaquina, productMix: productMix,
+      produccionMensualPorMaquina: produccionMensualPorMaquina,
       skuBuscador: skuBuscador, skuMonthlyTrend: skuMonthlyTrend, skuArticleMonthlyTrend: skuArticleMonthlyTrend
     };
   }
@@ -2122,11 +2136,6 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     });
   }
 
-  function truncateLabel(s, max) {
-    if (!s) return '';
-    return s.length > max ? s.slice(0, max - 1) + '…' : s;
-  }
-
   function renderRankedBarChart(container, opts) {
     // opts: {items:[{label,value}], formatValue, colorVar}
     // horizontal bars — the right layout for long text category names (item/product
@@ -2135,8 +2144,11 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     chartUid++;
     var items = opts.items.filter(function (it) { return isNum(it.value); });
     var n = items.length;
-    var rowH = 30, labelW = 210, padR = 70, padTop = 4, padBottom = 4;
-    var W = 680;
+    var rowH = 30, padR = 70, padTop = 4, padBottom = 4;
+    // size the label column to fit the longest full article name — never truncated
+    var maxLabelLen = items.length ? Math.max.apply(null, items.map(function (it) { return (it.label || '').length; })) : 10;
+    var labelW = Math.max(140, Math.min(360, maxLabelLen * 5.8 + 20));
+    var W = labelW + 470;
     var plotW = W - labelW - padR;
     var H = n * rowH + padTop + padBottom || rowH;
 
@@ -2150,7 +2162,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var barW = Math.max(1, (Math.abs(it.value) / maxV) * plotW);
       var barH = rowH - 10;
       var by = y0 + 5;
-      barsHtml += '<text class="axis-label rank-label" x="' + (labelW - 10) + '" y="' + (by + barH / 2 + 3.5) + '" text-anchor="end">' + escapeHtml(truncateLabel(it.label, 26)) + '</text>';
+      barsHtml += '<text class="axis-label rank-label" x="' + (labelW - 10) + '" y="' + (by + barH / 2 + 3.5) + '" text-anchor="end">' + escapeHtml(it.label) + '</text>';
       barsHtml += '<rect class="bar" data-i="' + i + '" x="' + labelW + '" y="' + by + '" width="' + barW + '" height="' + barH + '" rx="3" fill="' + opts.colorVar + '"></rect>';
       barsHtml += '<text class="value-label" x="' + (labelW + barW + 6) + '" y="' + (by + barH / 2 + 3.5) + '" text-anchor="start">' + opts.formatValue(it.value) + '</text>';
       bars.push({ i: i, label: it.label, value: it.value, cx: labelW + barW / 2, top: by });
@@ -2895,20 +2907,47 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var maquinaTxt = STATE.productos.maquina ? machineShortLabel(STATE.productos.maquina, STATE.data.machineCodes) : 'todas las máquinas';
     var suffix = ' — kg, ' + maquinaTxt + ', ' + periodo;
     el('productosTopCap').textContent = 'producidos' + suffix;
-    el('productosFamProdCap').textContent = 'top 10 familias' + suffix;
-    el('productosFamChatCap').textContent = 'top 10 familias' + suffix;
 
     renderRankedBarChart(el('chartTopProductos'), {
       items: mix.topProductos.map(function (r) { return { label: r.label, value: r.kg }; }),
       formatValue: fmtKgTick, colorVar: 'var(--series-1)'
     });
-    renderRankedBarChart(el('chartFamiliaProd'), {
-      items: mix.porFamilia.map(function (r) { return { label: r.label, value: r.kg }; }),
-      formatValue: fmtKgTick, colorVar: 'var(--series-2)'
+
+    // producción mensual total por máquina — plant-wide view, independent of the filters above
+    var porMaquina = STATE.engine.produccionMensualPorMaquina(anio);
+    renderGroupedBarChart(el('chartProdMaquinaMes'), {
+      categories: MESES_ABBR,
+      series: porMaquina.map(function (m, i) {
+        return { name: machineShortLabel(m.maquina, STATE.data.machineCodes), color: SERIES_COLORS[i % SERIES_COLORS.length], values: m.values };
+      }),
+      formatValue: fmtKgTick
     });
-    renderRankedBarChart(el('chartFamiliaChatarra'), {
-      items: mix.chatarraPorFamilia.map(function (r) { return { label: r.label, value: r.kg }; }),
-      formatValue: fmtKgTick, colorVar: 'var(--series-6)'
+
+    // producción por espesor — cap to the 8 biggest thicknesses + "Otros" so the monthly
+    // grouped chart doesn't get overcrowded with dozens of thin categorical slots
+    var esp = STATE.engine.espesorAnalysis(anio);
+    var espTotals = esp.kgTable.map(function (r) { return { espesor: r.espesor, total: sum(r.meses.filter(isNum)) }; });
+    espTotals.sort(function (a, b) { return b.total - a.total; });
+    var keepEsp = espTotals.slice(0, 8).map(function (t) { return t.espesor; });
+    var espMesSeries = [];
+    esp.kgTable.forEach(function (r) {
+      if (keepEsp.indexOf(r.espesor) === -1) return;
+      espMesSeries.push({ name: r.espesor + ' mm', color: SERIES_COLORS[espMesSeries.length % SERIES_COLORS.length], values: r.meses });
+    });
+    if (espTotals.length > 8) {
+      var otrosEsp = espTotals.slice(8).map(function (t) { return t.espesor; });
+      var otrosVals = MESES.map(function (_, i) {
+        var v = 0;
+        esp.kgTable.forEach(function (r) { if (otrosEsp.indexOf(r.espesor) >= 0 && isNum(r.meses[i])) v += r.meses[i]; });
+        return v;
+      });
+      espMesSeries.push({ name: 'Otros', color: 'var(--text-muted)', values: otrosVals });
+    }
+    renderGroupedBarChart(el('chartEspesorMesKg'), { categories: MESES_ABBR, series: espMesSeries, formatValue: fmtKgTick });
+
+    renderRankedBarChart(el('chartEspesorAnualKg'), {
+      items: espTotals.map(function (t) { return { label: t.espesor + ' mm', value: t.total }; }),
+      formatValue: fmtKgTick, colorVar: 'var(--series-3)'
     });
   }
 
