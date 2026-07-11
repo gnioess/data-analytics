@@ -177,7 +177,7 @@
     var cAno = idx['ano'], cMes = idx['mes'], cMaq = idx['nombremaquina'],
       cFecha = idx['fecha'], cLargo = idx['largo'], cCant = idx['cantproducida'],
       cKgReal = idx['cantkgreal'], cTotalUE = idx['totalunest'], cEsp = idx['espesor'],
-      cClas = idx['clasificacionprod1'], cCodMaq = idx['codmaq'],
+      cClas = idx['clasificacionprod1'], cCodMaq = idx['codmaq'], cOt = idx['ot'],
       cDesc = idx['descripcionarticulo'], cFamilia = idx['familia'], cSku = idx['codigoarticulo'];
     if (cAno == null || cMes == null || cMaq == null) return out;
     for (var r = 1; r < aoa.length; r++) {
@@ -194,6 +194,7 @@
         maquina: maq,
         codigo: cCodMaq != null ? trimStr(row[cCodMaq]) : '',
         fecha: cFecha != null ? row[cFecha] : null,
+        ot: cOt != null ? toNum(row[cOt]) : null,
         largo: cLargo != null ? toNum(row[cLargo]) : null,
         cantProducida: cCant != null ? toNum(row[cCant]) : null,
         kgReal: cKgReal != null ? toNum(row[cKgReal]) : null,
@@ -213,7 +214,7 @@
     if (!aoa || aoa.length < 2) return out;
     var idx = headerIndex(aoa[0]);
     var cAno = idx['ano'], cMes = idx['mes'], cMaq = idx['nommaquina'], cTotalUE = idx['totalunest'],
-      cFecha = idx['fechacontprod'], cFamilia = idx['familiacodsolic'],
+      cFecha = idx['fechacontprod'], cFamilia = idx['familiacodsolic'], cEcot = idx['ecot'],
       cCodSolic = idx['codsolic'], cDescSolic = idx['descripcodsolic'];
     if (cAno == null || cMes == null || cMaq == null) return out;
     for (var r = 1; r < aoa.length; r++) {
@@ -228,6 +229,8 @@
         maquina: maq,
         totalUnEst: cTotalUE != null ? toNum(row[cTotalUE]) : null,
         familia: cFamilia != null ? trimStr(row[cFamilia]) : '',
+        fecha: cFecha != null ? row[cFecha] : null,
+        ot: cEcot != null ? toNum(row[cEcot]) : null,
         codSolic: cCodSolic != null ? trimStr(row[cCodSolic]) : '',
         descripcion: cDescSolic != null ? trimStr(row[cDescSolic]) : ''
       });
@@ -510,10 +513,38 @@
    * ======================================================================= */
 
   function mergeConsolidadoConMensual(consolidado, mensual) {
-    var mesesConDatos = {};
-    consolidado.forEach(function (r) { mesesConDatos[r.anio + '-' + r.mes] = true; });
-    var extra = mensual.filter(function (r) { return !mesesConDatos[r.anio + '-' + r.mes]; });
-    return consolidado.concat(extra);
+    // Both sheets are one logical table: the main sheet holds closed months, the "M"
+    // sheet holds the in-progress month being filled daily ("es la continuación del
+    // otro"). Dedup at (año, mes, máquina) granularity, and when the same month+machine
+    // exists in both, keep whichever side reaches the LATER day — the main sheet can
+    // hold a stale partial copy of the current month while the M sheet has newer days,
+    // and preferring main blindly would silently drop the freshest data.
+    function maxDia(rows) {
+      var d = 0;
+      rows.forEach(function (r) {
+        if (r.fecha instanceof Date) { var x = r.fecha.getUTCDate(); if (x > d) d = x; }
+      });
+      return d || rows.length; // no dates at all → fall back to row count as freshness
+    }
+    var porClaveMain = {}, porClaveM = {};
+    consolidado.forEach(function (r) {
+      var k = r.anio + '-' + r.mes + '-' + r.maquina;
+      (porClaveMain[k] = porClaveMain[k] || []).push(r);
+    });
+    mensual.forEach(function (r) {
+      var k = r.anio + '-' + r.mes + '-' + r.maquina;
+      (porClaveM[k] = porClaveM[k] || []).push(r);
+    });
+    var out = [];
+    Object.keys(porClaveMain).forEach(function (k) {
+      var m = porClaveM[k];
+      if (m && maxDia(m) > maxDia(porClaveMain[k])) out = out.concat(m);
+      else out = out.concat(porClaveMain[k]);
+    });
+    Object.keys(porClaveM).forEach(function (k) {
+      if (!porClaveMain[k]) out = out.concat(porClaveM[k]);
+    });
+    return out;
   }
 
   function loadWorkbook(arrayBuffer) {
@@ -539,7 +570,7 @@
     if (!wsChatarra) missing.push('Chatarra');
     if (missing.length) {
       throw new Error('No se encontraron las hojas requeridas: ' + missing.join(', ') +
-        '. Verifica que el Excel tenga la misma estructura del panel INDAMA.');
+        '. Verifica que el Excel tenga la misma estructura del reporte de operaciones.');
     }
 
     // "Produccion"/"Chatarra" hold closed, completed months; "Produccion M"/"Chatarra M"
@@ -554,6 +585,26 @@
       parseChatarra(sheetToAOA(wsChatarra)),
       wsChatarraM ? parseChatarra(sheetToAOA(wsChatarraM)) : []
     );
+
+    // Recover the article behind scrap rows whose "Cód.Solic." formula broke
+    // (live SAP exports leave literal "#VALUE!", which trimStr blanks out): the
+    // scrap row's EC/OT points at the production order, so the production rows
+    // tell us which article that scrap belongs to. Without this, most of the
+    // in-progress month's scrap loses its article identity and vanishes from
+    // the SKU search even though the kilos exist.
+    var otMap = {};
+    produccion.forEach(function (p) {
+      if (p.ot != null && p.sku && !otMap[p.ot]) otMap[p.ot] = p;
+    });
+    chatarra.forEach(function (c) {
+      if (!c.codSolic && c.ot != null && otMap[c.ot]) {
+        var p = otMap[c.ot];
+        c.codSolic = p.sku;
+        if (!c.descripcion) c.descripcion = p.descripcion;
+        if (!c.familia) c.familia = p.familia;
+      }
+    });
+
     var vales = wsVales ? parseValesConsumo(sheetToAOA(wsVales)) : [];
     var bobinasM = wsBobinas ? parseMonthlyMatrixByLabel(sheetToAOA(wsBobinas), 'descripcion') : {};
     var prodResumenAnu = wsProdResumen ? parseMonthlyMatrixByLabel(sheetToAOA(wsProdResumen), 'nommaq') : {};
@@ -1075,6 +1126,74 @@
       });
     }
 
+    /* ---- Proyección de cierre del mes en curso (run-rate) ----
+     * The in-progress month arrives day by day via "Producción M". At the pace
+     * produced so far (kg / last day with data), project the full-month close and
+     * compare against that month's production budget — per machine and plant-wide. */
+    function proyeccionCierre(anio) {
+      var mesN = null;
+      D.produccion.forEach(function (p) {
+        if (p.anio === anio && isNum(p.totalUnEst) && p.totalUnEst > 0 && (mesN == null || p.mes > mesN)) mesN = p.mes;
+      });
+      if (mesN == null) return null;
+      var rows = D.produccion.filter(function (p) { return p.anio === anio && p.mes === mesN; });
+      var maxDay = 0;
+      rows.forEach(function (p) {
+        if (p.fecha instanceof Date) {
+          var d = p.fecha.getUTCDate();
+          if (d > maxDay) maxDay = d;
+        }
+      });
+      var diasMes = new Date(Date.UTC(anio, mesN, 0)).getUTCDate();
+      if (!maxDay) maxDay = diasMes;
+      var mesNombre = MESES[mesN - 1];
+      var factor = diasMes / maxDay;
+      var maquinas = D.machines.filter(function (m) { return m !== 'Braner'; }).map(function (maq) {
+        var kg = sum(rows.filter(function (p) { return p.maquina === maq; }).map(function (p) { return p.totalUnEst; }));
+        var proy = kg * factor;
+        var ppto = pptoProdVal(maq, mesNombre);
+        var desvPct = (ppto != null && ppto !== 0) ? (proy - ppto) / ppto : null;
+        return { maquina: maq, kg: kg, proy: proy, ppto: ppto, desvPct: desvPct,
+                 estado: desvPct == null ? 'sindato' : (desvPct >= 0 ? 'ok' : 'alerta') };
+      });
+      var totalKg = sum(rows.map(function (p) { return p.totalUnEst; }));
+      var totalProy = totalKg * factor;
+      var totalPpto = pptoTotalVal(mesNombre);
+      var totalDesv = (totalPpto != null && totalPpto !== 0) ? (totalProy - totalPpto) / totalPpto : null;
+      return {
+        mes: mesNombre, mesN: mesN, diaActual: maxDay, diasMes: diasMes, cerrado: maxDay >= diasMes,
+        maquinas: maquinas,
+        total: { kg: totalKg, proy: totalProy, ppto: totalPpto, desvPct: totalDesv,
+                 estado: totalDesv == null ? 'sindato' : (totalDesv >= 0 ? 'ok' : 'alerta') }
+      };
+    }
+
+    /* ---- Pareto de chatarra 80/20: qué artículos concentran la chatarra ---- */
+    function paretoChatarra(anio, opts) {
+      opts = opts || {};
+      var mesN = opts.mes ? MESES.indexOf(opts.mes) + 1 : null;
+      var map = {};
+      D.chatarra.forEach(function (c) {
+        if (c.anio !== anio || !c.descripcion) return;
+        if (mesN != null && c.mes !== mesN) return;
+        if (opts.maquina && c.maquina !== opts.maquina) return;
+        if (!isNum(c.totalUnEst) || c.totalUnEst <= 0) return;
+        map[c.descripcion] = (map[c.descripcion] || 0) + c.totalUnEst;
+      });
+      var items = Object.keys(map).map(function (k) { return { label: k, kg: map[k] }; })
+        .sort(function (a, b) { return b.kg - a.kg; });
+      var total = sum(items.map(function (it) { return it.kg; }));
+      if (!total) return { items: [], total: 0, n80: 0 };
+      var acum = 0, n80 = 0;
+      items.forEach(function (it, i) {
+        acum += it.kg;
+        it.share = it.kg / total;
+        it.cum = acum / total;
+        if (n80 === 0 && it.cum >= 0.8) n80 = i + 1;
+      });
+      return { items: items, total: total, n80: n80 || items.length };
+    }
+
     /* ---- Buscador de SKU: producción vs. chatarra por SKU × máquina ---- */
     // links Producción.Código Artículo <-> Chatarra.Cód.Solic. (the requisition's
     // article code) — verified ~95% code overlap between the two sheets.
@@ -1204,6 +1323,7 @@
       pptoTotalVal: pptoTotalVal, oeeMetaVal: oeeMetaVal,
       torreControl: torreControl, aporteOEEPorMaquina: aporteOEEPorMaquina, productMix: productMix,
       produccionMensualPorMaquina: produccionMensualPorMaquina, costosCategoria: costosCategoria,
+      proyeccionCierre: proyeccionCierre, paretoChatarra: paretoChatarra,
       skuBuscador: skuBuscador, skuMonthlyTrend: skuMonthlyTrend, skuArticleMonthlyTrend: skuArticleMonthlyTrend
     };
   }
@@ -1615,6 +1735,82 @@
     });
   }
 
+  function renderParetoChart(container, opts) {
+    // opts: {items:[{label, kg, share, cum}], n80}
+    // Classic Pareto with ONE axis: bars show each article's % share of total scrap,
+    // the line shows the cumulative %, both on the same 0-100% scale (kg go in the
+    // tooltip). Top items individually + the rest folded into "Resto".
+    chartUid++;
+    var MAXB = 15;
+    var items = opts.items.slice(0, MAXB);
+    var resto = opts.items.slice(MAXB);
+    if (resto.length) {
+      var restoKg = sum(resto.map(function (it) { return it.kg; }));
+      var restoShare = sum(resto.map(function (it) { return it.share; }));
+      items.push({ label: 'Resto (' + resto.length + ' artículos)', kg: restoKg, share: restoShare, cum: 1 });
+    }
+    var n = items.length;
+    var W = 720, H = 300, padL = 40, padR = 20, padT = 16, padB = 24;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var bandW = plotW / Math.max(n, 1);
+    var barW = Math.max(8, Math.min(34, bandW * 0.6));
+
+    function y(f) { return padT + plotH - f * plotH; }
+    var gridHtml = '', labelsHtml = '';
+    [0, 0.25, 0.5, 0.75, 1].forEach(function (f) {
+      var yy = y(f);
+      gridHtml += '<line class="grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + yy + '" y2="' + yy + '"></line>';
+      labelsHtml += '<text class="axis-label" x="' + (padL - 8) + '" y="' + (yy + 3) + '" text-anchor="end">' + Math.round(f * 100) + '%</text>';
+    });
+    // 80% reference
+    var y80 = y(0.8);
+    gridHtml += '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y80 + '" y2="' + y80 + '" stroke="var(--critical)" stroke-width="1" stroke-dasharray="4 3" opacity=".55"></line>';
+    labelsHtml += '<text class="axis-label" x="' + (W - padR) + '" y="' + (y80 - 4) + '" text-anchor="end" fill="var(--critical)">80%</text>';
+
+    var barsHtml = '', lineHtml = '', ptsHtml = '', xLabelsHtml = '';
+    var pts = [];
+    items.forEach(function (it, i) {
+      var cx = padL + bandW * i + bandW / 2;
+      var isResto = i === items.length - 1 && resto.length;
+      var bh = Math.max(1, it.share * plotH);
+      barsHtml += '<rect class="bar" data-i="' + i + '" x="' + (cx - barW / 2) + '" y="' + (padT + plotH - bh) + '" width="' + barW + '" height="' + bh + '" rx="3" fill="' + (isResto ? 'var(--text-muted)' : 'var(--series-1)') + '"></rect>';
+      pts.push({ i: i, cx: cx, cy: y(it.cum), it: it });
+      xLabelsHtml += '<text class="axis-label" x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle">' + (i + 1) + '</text>';
+    });
+    var d = pts.map(function (p, i) { return (i ? 'L' : 'M') + p.cx + ',' + p.cy; }).join('');
+    lineHtml = '<path d="' + d + '" fill="none" stroke="var(--series-8)" stroke-width="2"></path>';
+    pts.forEach(function (p) {
+      ptsHtml += '<circle class="bar" data-i="' + p.i + '" cx="' + p.cx + '" cy="' + p.cy + '" r="3.5" fill="var(--series-8)" stroke="var(--surface-1)" stroke-width="1.5"></circle>';
+    });
+
+    var legendHtml = '<div class="chart-legend">' +
+      '<span class="sw"><span class="dot" style="background:var(--series-1)"></span>% del total</span>' +
+      '<span class="sw"><span class="dot" style="background:var(--series-8)"></span>% acumulado</span></div>';
+    var tipId = 'tip' + chartUid;
+    container.innerHTML = '<div class="chart-wrap">' + legendHtml +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
+      gridHtml + labelsHtml + barsHtml + lineHtml + ptsHtml + xLabelsHtml +
+      '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
+
+    var tip = container.querySelector('#' + tipId);
+    var wrapEl = container.querySelector('.chart-wrap');
+    container.querySelectorAll('.bar').forEach(function (elm) {
+      var i = parseInt(elm.getAttribute('data-i'), 10);
+      var p = pts[i];
+      if (!p) return;
+      elm.addEventListener('mousemove', function () {
+        var rect = wrapEl.getBoundingClientRect();
+        var scale = rect.width / W;
+        tip.style.left = (p.cx * scale) + 'px';
+        tip.style.top = ((padT + 8) * scale) + 'px';
+        tip.style.opacity = 1;
+        tip.innerHTML = '<strong>#' + (i + 1) + ' ' + escapeHtml(p.it.label) + '</strong><br>' +
+          fmtInt(p.it.kg) + ' kg — ' + fmtPct(p.it.share, 1) + ' del total<br>acumulado: ' + fmtPct(p.it.cum, 1);
+      });
+      elm.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+    });
+  }
+
   function renderBubbleChart(container, opts) {
     // opts: {categories, series:[{label,color,values(0..1 y-axis),sizes(kg, bubble area)}], formatValue, formatSize}
     // one bubble per article × month: center label = kg (formatSize), outside label = full article name.
@@ -1904,7 +2100,8 @@
    * ======================================================================= */
 
   var STATE = {
-    data: null, engine: null, year: null, month: null, machine: null,
+    data: null, engine: null, year: null, month: null, machine: null, fileMeta: null,
+    restored: false,
     sku: { maquina: null, mes: null, query: '' },
     productos: { maquina: null, mes: null },
     insumos: { maquina: null }
@@ -2212,6 +2409,7 @@
         container.querySelectorAll('.seg-btn').forEach(function (b) { b.classList.remove('active'); });
         btn.classList.add('active');
         onPick(btn.getAttribute('data-value'));
+        saveFilters();
       });
     });
   }
@@ -2239,9 +2437,12 @@
       machines.map(function (m) { return { value: m, label: machineShortLabel(m, STATE.data.machineCodes) }; })
     );
     // default to a single machine (not "Todas") so the bubble chart starts on a
-    // readable view instead of every article across every machine at once
-    if (STATE.sku.maquina == null && machines.length) STATE.sku.maquina = machines[0];
-    if (STATE.productos.maquina == null && machines.length) STATE.productos.maquina = machines[0];
+    // readable view instead of every article across every machine at once —
+    // unless we restored the user's saved filters, where null means "Todas"
+    if (!STATE.restored) {
+      if (STATE.sku.maquina == null && machines.length) STATE.sku.maquina = machines[0];
+      if (STATE.productos.maquina == null && machines.length) STATE.productos.maquina = machines[0];
+    }
     renderSegmented('skuMachineSeg', skuMachineOptions, STATE.sku.maquina || '', function (val) {
       STATE.sku.maquina = val || null;
       renderSkuBuscador();
@@ -2300,6 +2501,36 @@
     });
     html += '</tbody></table>';
     el('torreControl').innerHTML = html;
+  }
+
+  function renderProyeccion(anio) {
+    var p = STATE.engine.proyeccionCierre(anio);
+    var section = el('proyeccionSection');
+    if (!p) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+    el('proyeccionMesLabel').textContent = p.mes;
+    el('proyeccionCap').textContent = p.cerrado ?
+      'Mes completo (' + p.diasMes + ' días) — la proyección coincide con el cierre real.' :
+      'Avance al día ' + p.diaActual + ' de ' + p.diasMes + ' — proyección al ritmo actual (kg a la fecha ÷ días transcurridos × días del mes) vs. presupuesto.';
+    function pill(estado) {
+      var cls = estado === 'ok' ? 'good' : (estado === 'alerta' ? 'bad' : '');
+      var label = estado === 'ok' ? 'Cumple' : (estado === 'alerta' ? 'En riesgo' : 'Sin ppto');
+      return '<span class="pill' + (cls ? ' ' + cls : ' pill-muted') + '">' + label + '</span>';
+    }
+    var html = '<table class="wide"><thead><tr><th>Máquina</th><th>Real al día ' + p.diaActual + ' (kg)</th><th>Proyección cierre (kg)</th><th>Presupuesto (kg)</th><th>Desv. proyectada</th><th>Estado</th></tr></thead><tbody>';
+    p.maquinas.forEach(function (m) {
+      html += '<tr>' +
+        '<td>' + escapeHtml(machineShortLabel(m.maquina, STATE.data.machineCodes)) + ' <span class="subtle">' + escapeHtml(m.maquina) + '</span></td>' +
+        tdv(m.kg, fmtInt) + tdv(m.proy, fmtInt) + tdv(m.ppto, fmtInt) +
+        tdv(m.desvPct, function (v) { return fmtSigned(v, function (x) { return fmtPct(x, 1); }); }) +
+        '<td>' + pill(m.estado) + '</td></tr>';
+    });
+    html += '<tr class="total"><td>Total Planta</td>' +
+      tdv(p.total.kg, fmtInt) + tdv(p.total.proy, fmtInt) + tdv(p.total.ppto, fmtInt) +
+      tdv(p.total.desvPct, function (v) { return fmtSigned(v, function (x) { return fmtPct(x, 1); }); }) +
+      '<td>' + pill(p.total.estado) + '</td></tr>';
+    html += '</tbody></table>';
+    el('proyeccionTable').innerHTML = html;
   }
 
   function renderInsumos() {
@@ -2445,6 +2676,16 @@
     el('chartSkuBubble').parentNode.querySelector('.cap').textContent = art.series.length === 0 ? 'Sin artículos con chatarra para este filtro (' + skuFilterTxt + ')' :
       (fmtInt(art.totalArticles) + ' artículo' + (art.totalArticles === 1 ? '' : 's') + ' con chatarra — ' + skuFilterTxt + hiddenTxt);
 
+    var pareto = STATE.engine.paretoChatarra(STATE.year, { maquina: STATE.sku.maquina, mes: STATE.sku.mes });
+    if (pareto.items.length) {
+      renderParetoChart(el('chartPareto'), pareto);
+      el('paretoCap').textContent = 'Los primeros ' + pareto.n80 + ' de ' + pareto.items.length +
+        ' artículos concentran el 80% de la chatarra (' + fmtInt(pareto.total) + ' kg totales) — ' + skuFilterTxt;
+    } else {
+      el('chartPareto').innerHTML = '';
+      el('paretoCap').textContent = 'Sin chatarra atribuible a artículos para este filtro (' + skuFilterTxt + ')';
+    }
+
     var rows = STATE.engine.skuBuscador(STATE.year, STATE.sku);
     var total = rows.length;
     var shown = rows.slice(0, SKU_ROW_LIMIT);
@@ -2471,6 +2712,7 @@
     var kpi = STATE.engine.kpiHeader(anio, resumen);
     renderKPIs(kpi);
     renderTorreControl(anio, STATE.month);
+    renderProyeccion(anio);
     renderTendencias(anio, resumen);
     renderPresupuesto(anio, resumen);
     renderDetalleMes(anio, STATE.month);
@@ -2479,7 +2721,11 @@
     renderInsumos();
     renderProductos(anio);
     renderSkuBuscador();
-    el('updatedLabel').textContent = 'Año ' + anio + '\n' + new Date().toLocaleString('es-CL');
+    var meta = STATE.fileMeta;
+    el('updatedLabel').textContent = meta ?
+      (meta.name + '\nAño ' + anio + ' · ' + new Date(meta.ts).toLocaleString('es-CL')) :
+      ('Año ' + anio + '\n' + new Date().toLocaleString('es-CL'));
+    saveFilters();
   }
 
   var TAB_META = {
@@ -2501,29 +2747,109 @@
     el('pageTitle').textContent = TAB_META[tab].title;
     el('pageCrumb').textContent = TAB_META[tab].crumb;
     el('sidebar').classList.remove('open');
+    if (STATE.data) saveFilters();
+  }
+
+  /* ---- Persistencia local: último Excel (IndexedDB) + filtros (localStorage).
+   * Todo queda en el navegador del usuario — nada sale del equipo. ---- */
+  var IDB_NAME = 'erp-analytics', IDB_STORE = 'files', LS_FILTERS = 'erpAnalyticsFiltros';
+  function idbOpen() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore(IDB_STORE); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+  function idbPut(key, value) {
+    return idbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put(value, key);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+  function idbGet(key) {
+    return idbOpen().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(IDB_STORE, 'readonly');
+        var req = tx.objectStore(IDB_STORE).get(key);
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function () { reject(req.error); };
+      });
+    });
+  }
+
+  function saveFilters() {
+    try {
+      var activeTab = '';
+      document.querySelectorAll('.nav-item.active').forEach(function (b) { activeTab = b.getAttribute('data-tab'); });
+      localStorage.setItem(LS_FILTERS, JSON.stringify({
+        year: STATE.year, month: STATE.month, machine: STATE.machine,
+        sku: STATE.sku, productos: STATE.productos, insumos: STATE.insumos, tab: activeTab
+      }));
+    } catch (e) { /* almacenamiento no disponible — seguir sin persistir */ }
+  }
+  function restoreFilters(data) {
+    try {
+      var f = JSON.parse(localStorage.getItem(LS_FILTERS) || 'null');
+      if (!f) return null;
+      if (f.year != null && data.years.indexOf(f.year) >= 0) STATE.year = f.year;
+      if (f.month && MESES.indexOf(f.month) >= 0) STATE.month = f.month;
+      if (f.machine && data.machines.indexOf(f.machine) >= 0) STATE.machine = f.machine;
+      function maqOk(v) { return v == null || data.machines.indexOf(v) >= 0; }
+      if (f.sku) STATE.sku = { maquina: maqOk(f.sku.maquina) ? f.sku.maquina : null, mes: MESES.indexOf(f.sku.mes) >= 0 ? f.sku.mes : null, query: f.sku.query || '' };
+      if (f.productos) STATE.productos = { maquina: maqOk(f.productos.maquina) ? f.productos.maquina : null, mes: MESES.indexOf(f.productos.mes) >= 0 ? f.productos.mes : null };
+      if (f.insumos) STATE.insumos = { maquina: maqOk(f.insumos.maquina) ? f.insumos.maquina : null };
+      STATE.restored = true; // a saved null machine means the user chose "Todas" — don't re-default it
+      return f.tab || null;
+    } catch (e) { return null; }
+  }
+
+  function initFromBuffer(arrayBuffer, meta) {
+    var data = loadWorkbook(arrayBuffer);
+    STATE.data = data;
+    D = data;
+    STATE.engine = makeEngine(data);
+    STATE.fileMeta = meta && meta.name ? { name: meta.name, ts: meta.ts } : null;
+    STATE.year = data.years.length ? data.years[data.years.length - 1] : new Date().getFullYear();
+    STATE.month = pickDefaultMonth(STATE.year);
+    STATE.machine = data.machines[0];
+    var savedTab = restoreFilters(data);
+    if (STATE.sku.query) el('skuSearch').value = STATE.sku.query;
+    populateSelectors();
+    el('dzScreen').style.display = 'none';
+    el('appShell').style.display = 'flex';
+    renderAll();
+    if (savedTab && TAB_META[savedTab]) switchTab(savedTab);
   }
 
   function onFile(file) {
     var reader = new FileReader();
     reader.onload = function (e) {
       try {
-        var data = loadWorkbook(e.target.result);
-        STATE.data = data;
-        D = data;
-        STATE.engine = makeEngine(data);
-        STATE.year = data.years.length ? data.years[data.years.length - 1] : new Date().getFullYear();
-        STATE.month = pickDefaultMonth(STATE.year);
-        STATE.machine = data.machines[0];
-        populateSelectors();
-        el('dzScreen').style.display = 'none';
-        el('appShell').style.display = 'flex';
-        renderAll();
+        var buf = e.target.result;
+        initFromBuffer(buf, { name: file.name, ts: Date.now() });
+        // persist AFTER a successful parse so a bad file never replaces good data
+        idbPut('last', { buffer: buf, name: file.name, ts: Date.now() }).catch(function () { });
       } catch (err) {
         showError(err.message || String(err));
       }
     };
     reader.onerror = function () { showError('No se pudo leer el archivo.'); };
     reader.readAsArrayBuffer(file);
+  }
+
+  function tryRestoreSaved() {
+    if (typeof indexedDB === 'undefined') return;
+    idbGet('last').then(function (saved) {
+      if (!saved || !saved.buffer) return;
+      // only auto-load if the user hasn't already dropped a file
+      if (el('appShell').style.display === 'flex') return;
+      try { initFromBuffer(saved.buffer, saved); } catch (e) { /* datos guardados corruptos — ignorar */ }
+    }).catch(function () { });
   }
 
   function showError(msg) {
@@ -2575,9 +2901,14 @@
       skuSearchTimer = setTimeout(function () {
         STATE.sku.query = val;
         renderSkuBuscador();
+        saveFilters();
       }, 150);
     });
   }
 
-  document.addEventListener('DOMContentLoaded', wireEvents);
+  document.addEventListener('DOMContentLoaded', function () {
+    wireEvents();
+    el('printBtn').addEventListener('click', function () { window.print(); });
+    tryRestoreSaved();
+  });
 })();

@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-OUT="dist/Panel_INDAMA.html"
+OUT="dist/ERP_Analytics.html"
 mkdir -p dist
 
 TEMPLATE="src/index_template.html"

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Panel de Producción — INDAMA</title>
+<title>ERP Analytics — Panel de Producción</title>
 <style>
 :root{
   color-scheme: light dark;
@@ -434,13 +434,33 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
   }
   @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
 }
+
+/* ---------- Informe imprimible: solo el contenido de la pestaña activa ---------- */
+@media print{
+  body{background:#fff;}
+  .sidebar,#menuBtn,.filter-bar,.topbar .right,footer.app-footer{display:none !important;}
+  .main{padding:0;}
+  .topbar{position:static;background:none;border-bottom:2px solid #000;backdrop-filter:none;margin:0 0 14px;padding:0 0 8px;}
+  .card,.tile{box-shadow:none;border-color:#ccc;break-inside:avoid;}
+  .tile{animation:none;}
+  .tab-panel.active{animation:none;}
+  .grid-2{display:block;}
+  .grid-2 .card{margin-bottom:14px;}
+  .card{overflow:visible;}
+  table{font-size:10px;white-space:normal;}
+  table.wide{min-width:0;}
+  th,td{padding:5px 6px;}
+  .seg-btn:not(.active){display:none;}
+  .segmented{border:none;background:none;padding:0;}
+  .seg-btn.active{background:none;color:#000;box-shadow:none;padding:0;font-weight:700;}
+}
 </style>
 </head>
 <body>
 
 <div id="dzScreen">
   <div id="dzInner">
-    <div class="dz-brand"><div class="logo">IN</div><h1>Panel de Producción — INDAMA</h1></div>
+    <div class="dz-brand"><div class="logo">EA</div><h1>ERP Analytics — Panel de Producción</h1></div>
     <div id="dropzone" tabindex="0">
       <h2>Arrastra aquí el Excel de operaciones</h2>
       <p>o haz clic para seleccionar el archivo (.xlsx)</p>
@@ -455,8 +475,8 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
 
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
-      <div class="logo">IN</div>
-      <div class="txt"><h1>INDAMA</h1><div class="sub">Panel de Producción</div></div>
+      <div class="logo">EA</div>
+      <div class="txt"><h1>ERP Analytics</h1><div class="sub">Panel de Producción</div></div>
     </div>
     <nav class="sidebar-nav">
       <div class="nav-label">Navegación</div>
@@ -511,6 +531,9 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
           <span class="fg-label">Año</span>
           <div class="segmented" id="yearSeg"></div>
         </div>
+        <button class="btn" id="printBtn" title="Imprimir o guardar como PDF la pestaña actual" style="align-self:flex-end;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><path d="M6 9V3h12v6"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8" rx="1"></rect></svg>Informe
+        </button>
       </div>
     </div>
 
@@ -523,6 +546,14 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
       <div class="section">
         <div class="section-title"><span>Torre de control — <span id="torreMesLabel"></span></span><span class="line"></span></div>
         <div class="card"><div id="torreControl"></div></div>
+      </div>
+
+      <div class="section" id="proyeccionSection" style="display:none;">
+        <div class="section-title"><span>Proyección de cierre — <span id="proyeccionMesLabel"></span></span><span class="line"></span></div>
+        <div class="card">
+          <div class="cap" id="proyeccionCap" style="margin-bottom:12px;"></div>
+          <div id="proyeccionTable"></div>
+        </div>
       </div>
 
       <div class="section">
@@ -764,6 +795,11 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
           <h3>Chatarra % por mes</h3>
           <div class="cap">tamaño de burbuja = kg de chatarra — según búsqueda y máquina seleccionadas</div>
           <div id="chartSkuBubble"></div>
+        </div>
+        <div class="card">
+          <h3>Pareto de chatarra (80/20)</h3>
+          <div class="cap" id="paretoCap"></div>
+          <div id="chartPareto"></div>
         </div>
         <div class="card">
           <div class="cap" id="skuResultCount" style="margin-bottom:10px;"></div>
