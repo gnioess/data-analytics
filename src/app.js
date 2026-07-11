@@ -1087,17 +1087,22 @@
       var chatRows = D.chatarra.filter(function (c) {
         return c.anio === anio && c.codSolic && (mesN == null || c.mes === mesN) && (!opts.maquina || c.maquina === opts.maquina);
       });
-      // one row per SKU × máquina × mes — the month shown is always the actual month the
-      // production/chatarra was recorded in, not an aggregate across the whole filtered range
+      // one row per SKU × máquina — production and its corresponding chatarra don't always
+      // land in the exact same "Mes" cell (the scrap requisition can be logged a few days
+      // after the production run, sometimes crossing a month boundary), so grouping by
+      // month as well as sku+máquina used to split one article's totals into two incomplete
+      // rows (production with fake "0% chatarra" and chatarra with fake "100% chatarra").
+      // Grouping by sku+máquina only keeps both sides correctly combined; the "Mes" filter
+      // above already scopes both prodRows/chatRows to a single month when one is selected.
       var map = {};
       prodRows.forEach(function (p) {
-        var key = p.sku + '|' + p.maquina + '|' + p.mes;
-        if (!map[key]) map[key] = { sku: p.sku, descripcion: p.descripcion, familia: p.familia, maquina: p.maquina, mes: p.mes, prodKg: 0, chatKg: 0 };
+        var key = p.sku + '|' + p.maquina;
+        if (!map[key]) map[key] = { sku: p.sku, descripcion: p.descripcion, familia: p.familia, maquina: p.maquina, prodKg: 0, chatKg: 0 };
         if (isNum(p.totalUnEst)) map[key].prodKg += p.totalUnEst;
       });
       chatRows.forEach(function (c) {
-        var key = c.codSolic + '|' + c.maquina + '|' + c.mes;
-        if (!map[key]) map[key] = { sku: c.codSolic, descripcion: c.descripcion, familia: c.familia, maquina: c.maquina, mes: c.mes, prodKg: 0, chatKg: 0 };
+        var key = c.codSolic + '|' + c.maquina;
+        if (!map[key]) map[key] = { sku: c.codSolic, descripcion: c.descripcion, familia: c.familia, maquina: c.maquina, prodKg: 0, chatKg: 0 };
         if (isNum(c.totalUnEst)) map[key].chatKg += c.totalUnEst;
       });
       var rows = Object.keys(map).map(function (k) {
@@ -1106,7 +1111,7 @@
         // recorded scrap is a genuine 0% chatarra, not missing data, and vice versa
         var total = r.prodKg + r.chatKg;
         r.chatPct = total > 0 ? r.chatKg / total : null;
-        r.mesLabel = MESES_ABBR[r.mes - 1] || '-';
+        r.mesLabel = opts.mes || 'Año completo';
         return r;
       });
       if (opts.query) {
@@ -1115,7 +1120,7 @@
           return normKey(String(r.sku)).indexOf(q) >= 0 || normKey(r.descripcion).indexOf(q) >= 0;
         });
       }
-      rows.sort(function (a, b) { return a.mes - b.mes || (b.prodKg || 0) - (a.prodKg || 0); });
+      rows.sort(function (a, b) { return (b.prodKg || 0) - (a.prodKg || 0); });
       return rows;
     }
 
