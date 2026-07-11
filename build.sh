@@ -6,7 +6,7 @@ OUT="dist/Panel_INDAMA.html"
 mkdir -p dist
 
 TEMPLATE="src/index_template.html"
-VENDOR="vendor/xlsx.full.min.js"
+VENDOR="vendor/xlsx.mini.min.js"
 APP="src/app.js"
 
 python3 - "$TEMPLATE" "$VENDOR" "$APP" "$OUT" <<'PY'

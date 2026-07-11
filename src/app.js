@@ -139,6 +139,10 @@
       var row = aoa[r];
       var maq = trimStr(row[cMaq]);
       if (!maq) continue;
+      // some exports embed a per-machine "TOTAL MAQUINA" subtotal row alongside
+      // the real transaction rows, with the machine populated but no Fecha —
+      // skip it or every sum would be inflated (subtotal + its own detail rows)
+      if (cFecha != null && !row[cFecha]) continue;
       out.push({
         anio: toNum(row[cAno]),
         mes: toNum(row[cMes]),
@@ -159,12 +163,15 @@
     var out = [];
     if (!aoa || aoa.length < 2) return out;
     var idx = headerIndex(aoa[0]);
-    var cAno = idx['ano'], cMes = idx['mes'], cMaq = idx['nommaquina'], cTotalUE = idx['totalunest'];
+    var cAno = idx['ano'], cMes = idx['mes'], cMaq = idx['nommaquina'], cTotalUE = idx['totalunest'],
+      cFecha = idx['fechacontprod'];
     if (cAno == null || cMes == null || cMaq == null) return out;
     for (var r = 1; r < aoa.length; r++) {
       var row = aoa[r];
       var maq = trimStr(row[cMaq]);
       if (!maq) continue;
+      // same defensive skip as Producción: exclude embedded per-machine subtotal rows
+      if (cFecha != null && !row[cFecha]) continue;
       out.push({
         anio: toNum(row[cAno]),
         mes: toNum(row[cMes]),
