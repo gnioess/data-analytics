@@ -72,8 +72,11 @@
   }
   function td(text, cls) { return '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + text + '</td>'; }
   function tdv(n, formatter, cls) {
-    var extra = n == null ? ' dash' : (cls || '');
-    return '<td class="' + extra.trim() + '">' + (n == null ? '-' : formatter(n)) + '</td>';
+    var classes = [];
+    if (n == null) classes.push('dash');
+    else if (n < 0) classes.push('neg');
+    if (cls) classes.push(cls);
+    return '<td class="' + classes.join(' ') + '">' + (n == null ? '-' : formatter(n)) + '</td>';
   }
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -498,8 +501,9 @@
     function bobinaValor(anio, label, mesIdx) {
       var m = D.bobinasM[anio];
       if (!m || !m[label]) return null;
-      var v = m[label][mesIdx];
-      return v;
+      // future months are pre-filled with 0 in this sheet, not left blank —
+      // treat 0 as "no data yet" so it renders as "-" instead of a fake 0,00%
+      return zeroToNull(m[label][mesIdx]);
     }
     function flejeVenta(anio, nombre, mesIdx) {
       var m = D.prodResumenAnu[anio];
@@ -1098,6 +1102,99 @@
     });
   }
 
+  function renderDeviationChart(container, opts) {
+    // opts: {categories, values, formatValue, seriesLabel, goodIsPositive}
+    chartUid++;
+    var W = 640, H = 220, padL = 8, padR = 8, padT = 20, padB = 26;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var n = opts.categories.length;
+    var bandW = plotW / n;
+    var barW = Math.max(8, Math.min(30, bandW * 0.55));
+    var goodIsPositive = opts.goodIsPositive !== false;
+
+    var allVals = opts.values.filter(isNum);
+    var maxAbs = allVals.length ? Math.max.apply(null, allVals.map(Math.abs)) : 1;
+    maxAbs = maxAbs * 1.25 || 1;
+    var minV = -maxAbs, maxV = maxAbs;
+
+    function y(v) { return padT + plotH - ((v - minV) / (maxV - minV)) * plotH; }
+    var baseline = y(0);
+
+    var gridLines = 4, gridHtml = '', labelsHtml = '';
+    for (var g = 0; g <= gridLines; g++) {
+      var v = minV + (maxV - minV) * g / gridLines;
+      var yy = y(v);
+      gridHtml += '<line class="grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + yy + '" y2="' + yy + '"></line>';
+      labelsHtml += '<text class="axis-label" x="' + padL + '" y="' + (yy - 3) + '">' + opts.formatValue(v, true) + '</text>';
+    }
+
+    var barsHtml = '', xLabelsHtml = '', valueLabelsHtml = '';
+    var tipId = 'tip' + chartUid;
+    var bars = [];
+    opts.categories.forEach(function (cat, i) {
+      var cx = padL + bandW * i + bandW / 2;
+      var val = opts.values[i];
+      xLabelsHtml += '<text class="axis-label" x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle">' + cat + '</text>';
+      if (isNum(val)) {
+        var good = goodIsPositive ? val >= 0 : val <= 0;
+        var color = good ? 'var(--good)' : 'var(--critical)';
+        var y0 = baseline, y1 = y(val);
+        var top = Math.min(y0, y1), h = Math.max(1, Math.abs(y1 - y0));
+        var r = Math.min(4, barW / 2, h);
+        var x0 = cx - barW / 2;
+        var d = 'M' + x0 + ',' + (top + h) +
+          'L' + x0 + ',' + (top + r) +
+          'Q' + x0 + ',' + top + ' ' + (x0 + r) + ',' + top +
+          'L' + (x0 + barW - r) + ',' + top +
+          'Q' + (x0 + barW) + ',' + top + ' ' + (x0 + barW) + ',' + (top + r) +
+          'L' + (x0 + barW) + ',' + (top + h) + 'Z';
+        barsHtml += '<path class="bar" data-i="' + i + '" d="' + d + '" fill="' + color + '"></path>';
+        var labelY = val >= 0 ? top - 6 : top + h + 12;
+        valueLabelsHtml += '<text class="value-label" data-i="' + i + '" x="' + cx + '" y="' + labelY + '" text-anchor="middle" fill="' + color + '">' + opts.formatValue(val) + '</text>';
+        bars.push({ i: i, cx: cx, val: val, cat: cat, good: good });
+      }
+    });
+
+    var legendHtml = '<div class="chart-legend">' +
+      '<span class="sw"><span class="dot" style="background:var(--good)"></span>Favorable</span>' +
+      '<span class="sw"><span class="dot" style="background:var(--critical)"></span>Desfavorable</span>' +
+      '</div>';
+
+    container.innerHTML = '<div class="chart-wrap">' + legendHtml +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
+      '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
+      gridHtml + labelsHtml + barsHtml + valueLabelsHtml + xLabelsHtml +
+      '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
+
+    var tip = container.querySelector('#' + tipId);
+    var wrapEl = container.querySelector('.chart-wrap');
+    container.querySelectorAll('.bar').forEach(function (barEl) {
+      var i = parseInt(barEl.getAttribute('data-i'), 10);
+      var b = bars.filter(function (x) { return x.i === i; })[0];
+      if (!b) return;
+      var label = container.querySelector('.value-label[data-i="' + i + '"]');
+      function activate() {
+        var rect = wrapEl.getBoundingClientRect();
+        var scale = rect.width / W;
+        tip.style.left = (b.cx * scale) + 'px';
+        tip.style.top = (y(b.val) * scale) + 'px';
+        tip.style.opacity = 1;
+        tip.innerHTML = '<strong>' + b.cat + '</strong><br>' + opts.seriesLabel + ': ' + opts.formatValue(b.val) +
+          '<br>' + (b.good ? 'Favorable' : 'Desfavorable');
+        barEl.classList.add('bar-active');
+        if (label) label.classList.add('value-label-active');
+      }
+      function deactivate() {
+        tip.style.opacity = 0;
+        barEl.classList.remove('bar-active');
+        if (label) label.classList.remove('value-label-active');
+      }
+      barEl.addEventListener('mousemove', activate);
+      barEl.addEventListener('mouseleave', deactivate);
+      if (label) { label.addEventListener('mousemove', activate); label.addEventListener('mouseleave', deactivate); }
+    });
+  }
+
   var SERIES_COLORS = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)',
     'var(--series-5)', 'var(--series-6)', 'var(--series-7)', 'var(--series-8)'];
 
@@ -1181,7 +1278,7 @@
     var resumen = STATE.engine.resumenPlanta(anio);
     var rows = [
       { label: 'Total Producción', unit: 'kg', values: resumen.map(function (m) { return m.totalProduccion; }), total: true },
-      { label: 'Total Chatarra Real', unit: 'kg', values: resumen.map(function (m) { return m.totalChatarraReal; }) },
+      { label: 'Total Chatarra Real', unit: 'kg', values: resumen.map(function (m) { return m.totalChatarraReal; }), total: true },
       { label: 'Chatarra Tuberas & Perfiladoras', unit: '%', values: resumen.map(function (m) { return m.chatarraMaquinasPct; }), fmt: function (v) { return fmtPct(v, 2); } },
       { label: 'Desorillado Braner', unit: '%', values: resumen.map(function (m) { return m.desorilladoBranerPct; }), fmt: function (v) { return fmtPct(v, 2); } },
       { label: 'Chatarra Planta', unit: '%', values: resumen.map(function (m) { return m.pctChatarraPlanta; }), fmt: function (v) { return fmtPct(v, 2); } },
@@ -1230,12 +1327,23 @@
       seriesLabel: 'Chatarra planta', targetLabel: 'Meta (4,6%)'
     });
 
+    renderDeviationChart(el('chartDesvProd'), {
+      categories: ppto.produccion.map(function (m) { return m.mesAbbr; }),
+      values: ppto.produccion.map(function (m) { return m.desv; }),
+      formatValue: fmtKgTick, seriesLabel: 'Desviación', goodIsPositive: true
+    });
+    renderDeviationChart(el('chartDesvChat'), {
+      categories: ppto.chatarra.map(function (m) { return m.mesAbbr; }),
+      values: ppto.chatarra.map(function (m) { return m.desv; }),
+      formatValue: function (v) { return fmtPct(v, 2); }, seriesLabel: 'Desviación', goodIsPositive: true
+    });
+
     var rows = [
-      { label: 'Total Producción', unit: 'kg', values: ppto.produccion.map(function (m) { return m.real; }) },
+      { label: 'Total Producción', unit: 'kg', values: ppto.produccion.map(function (m) { return m.real; }), total: true },
       { label: 'Presupuesto Producción', unit: 'kg', values: ppto.produccion.map(function (m) { return m.ppto; }) },
       { label: 'Desviación Ppto vs Real', unit: 'kg', values: ppto.produccion.map(function (m) { return m.desv; }), fmt: fmtInt },
       { label: 'Desviación Ppto vs Real', unit: '%', values: ppto.produccion.map(function (m) { return m.desvPct; }), fmt: function (v) { return fmtPct(v, 1); } },
-      { label: 'Total Chatarra Real', unit: 'kg', values: ppto.chatarra.map(function (m) { return m.real; }) },
+      { label: 'Total Chatarra Real', unit: 'kg', values: ppto.chatarra.map(function (m) { return m.real; }), total: true },
       { label: 'Chatarra Planta', unit: '%', values: ppto.chatarra.map(function (m) { return m.pct; }), fmt: function (v) { return fmtPct(v, 2); } },
       { label: 'Meta', unit: '%', values: ppto.chatarra.map(function (m) { return m.meta; }), fmt: function (v) { return fmtPct(v, 1); } },
       { label: 'Desviación', unit: '%', values: ppto.chatarra.map(function (m) { return m.desv; }), fmt: function (v) { return fmtPct(v, 2); } }
