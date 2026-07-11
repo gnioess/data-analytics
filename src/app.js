@@ -1017,9 +1017,10 @@
       });
       var rows = Object.keys(map).map(function (k) {
         var r = map[k];
-        r.prodKg = zeroToNull(r.prodKg);
-        r.chatKg = zeroToNull(r.chatKg);
-        r.chatPct = ratio(r.chatKg, sum([r.prodKg, r.chatKg].filter(isNum)));
+        // keep prodKg/chatKg as real 0s (not "-") — a SKU with production but no
+        // recorded scrap is a genuine 0% chatarra, not missing data, and vice versa
+        var total = r.prodKg + r.chatKg;
+        r.chatPct = total > 0 ? r.chatKg / total : null;
         return r;
       });
       if (opts.query) {
@@ -2006,12 +2007,10 @@
     el('skuResultCount').textContent = total === 0 ? 'Sin resultados' :
       (total > SKU_ROW_LIMIT ? 'Mostrando ' + SKU_ROW_LIMIT + ' de ' + fmtInt(total) + ' resultados — refina la búsqueda para ver más' : fmtInt(total) + ' resultado' + (total === 1 ? '' : 's'));
 
-    var html = '<table class="wide"><thead><tr><th>SKU</th><th>Descripción</th><th>Familia</th><th>Máquina</th><th>Producción (kg)</th><th>Chatarra (kg)</th><th>Chatarra %</th></tr></thead><tbody>';
+    var html = '<table class="wide"><thead><tr><th>Descripción</th><th>Máquina</th><th>Producción (kg)</th><th>Chatarra (kg)</th><th>Chatarra %</th></tr></thead><tbody>';
     shown.forEach(function (r) {
       html += '<tr>' +
-        '<td>' + escapeHtml(r.sku) + '</td>' +
         '<td>' + escapeHtml(r.descripcion || '-') + '</td>' +
-        '<td>' + escapeHtml(r.familia || '-') + '</td>' +
         '<td>' + escapeHtml(machineShortLabel(r.maquina, STATE.data.machineCodes)) + '</td>' +
         tdv(r.prodKg, fmtInt) + tdv(r.chatKg, fmtInt) +
         tdv(r.chatPct, function (v) { return fmtPct(v, 2); }) +
