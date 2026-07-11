@@ -2917,8 +2917,30 @@
     });
   }
 
+  /* ---- Modo claro/oscuro: alterna sobre el tema efectivo y persiste la elección ---- */
+  function currentTheme() {
+    var t = document.documentElement.getAttribute('data-theme');
+    if (t === 'dark' || t === 'light') return t;
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  function updateThemeIcon() {
+    var dark = currentTheme() === 'dark';
+    el('themeIconMoon').style.display = dark ? 'none' : '';
+    el('themeIconSun').style.display = dark ? '' : 'none';
+  }
+  function wireTheme() {
+    updateThemeIcon();
+    el('themeBtn').addEventListener('click', function () {
+      var next = currentTheme() === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('erpAnalyticsTheme', next); } catch (e) { }
+      updateThemeIcon();
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     wireEvents();
+    wireTheme();
     el('printBtn').addEventListener('click', function () { window.print(); });
     tryRestoreSaved();
   });

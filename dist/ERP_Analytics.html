@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ERP Analytics — Panel de Producción</title>
+<script>
+// aplicar el tema guardado ANTES del primer render para evitar el destello
+try {
+  var t = localStorage.getItem('erpAnalyticsTheme');
+  if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+} catch (e) { }
+</script>
 <style>
 :root{
   color-scheme: light dark;
@@ -533,6 +540,10 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
         </div>
         <button class="btn" id="printBtn" title="Imprimir o guardar como PDF la pestaña actual" style="align-self:flex-end;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><path d="M6 9V3h12v6"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8" rx="1"></rect></svg>Informe
+        </button>
+        <button class="btn" id="themeBtn" title="Cambiar entre modo claro y oscuro" style="align-self:flex-end;" aria-label="Cambiar tema">
+          <svg id="themeIconMoon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
+          <svg id="themeIconSun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;display:none;"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M4.9 4.9l1.4 1.4"></path><path d="M17.7 17.7l1.4 1.4"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="M4.9 19.1l1.4-1.4"></path><path d="M17.7 6.3l1.4-1.4"></path></svg>
         </button>
       </div>
     </div>
@@ -3744,8 +3755,30 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     });
   }
 
+  /* ---- Modo claro/oscuro: alterna sobre el tema efectivo y persiste la elección ---- */
+  function currentTheme() {
+    var t = document.documentElement.getAttribute('data-theme');
+    if (t === 'dark' || t === 'light') return t;
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  function updateThemeIcon() {
+    var dark = currentTheme() === 'dark';
+    el('themeIconMoon').style.display = dark ? 'none' : '';
+    el('themeIconSun').style.display = dark ? '' : 'none';
+  }
+  function wireTheme() {
+    updateThemeIcon();
+    el('themeBtn').addEventListener('click', function () {
+      var next = currentTheme() === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('erpAnalyticsTheme', next); } catch (e) { }
+      updateThemeIcon();
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     wireEvents();
+    wireTheme();
     el('printBtn').addEventListener('click', function () { window.print(); });
     tryRestoreSaved();
   });
