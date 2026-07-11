@@ -9,7 +9,7 @@
   color-scheme: light dark;
   --surface-1:      #fcfcfb;
   --surface-2:      #ffffff;
-  --page:           #f9f9f7;
+  --page:           #f4f4f2;
   --text-primary:   #0b0b0b;
   --text-secondary: #52514e;
   --text-muted:     #898781;
@@ -29,52 +29,53 @@
   --serious:  #ec835a;
   --critical: #d03b3b;
   --good-text: #006300;
+  --card-shadow: 0 1px 2px rgba(11,11,11,.04), 0 6px 20px -8px rgba(11,11,11,.10);
+  --sidebar-w: 240px;
 }
 @media (prefers-color-scheme: dark){
   :root{
-    --surface-1: #1a1a19;
-    --surface-2: #202020;
-    --page:      #0d0d0d;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #898781;
-    --grid: #2c2c2a;
-    --baseline: #383835;
-    --border: rgba(255,255,255,0.10);
-    --series-1: #3987e5;
-    --series-2: #199e70;
-    --series-3: #c98500;
-    --series-4: #008300;
-    --series-5: #9085e9;
-    --series-6: #e66767;
-    --series-7: #d55181;
-    --series-8: #d95926;
-    --good: #0ca30c;
-    --warning: #fab219;
-    --serious: #ec835a;
-    --critical: #d03b3b;
+    --surface-1: #1c1c1e; --surface-2: #232325; --page: #131314;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8b8a86;
+    --grid: #303032; --baseline: #3d3d3f; --border: rgba(255,255,255,0.09);
+    --series-1: #3987e5; --series-2: #199e70; --series-3: #c98500; --series-4: #1fa31f;
+    --series-5: #9085e9; --series-6: #e66767; --series-7: #d55181; --series-8: #d95926;
     --good-text: #0ca30c;
+    --card-shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px -8px rgba(0,0,0,.5);
   }
 }
 :root[data-theme="dark"]{
-  --surface-1: #1a1a19; --surface-2: #202020; --page: #0d0d0d;
-  --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #898781;
-  --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
-  --series-1: #3987e5; --series-2: #199e70; --series-3: #c98500; --series-4: #008300;
+  --surface-1: #1c1c1e; --surface-2: #232325; --page: #131314;
+  --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8b8a86;
+  --grid: #303032; --baseline: #3d3d3f; --border: rgba(255,255,255,0.09);
+  --series-1: #3987e5; --series-2: #199e70; --series-3: #c98500; --series-4: #1fa31f;
   --series-5: #9085e9; --series-6: #e66767; --series-7: #d55181; --series-8: #d95926;
   --good-text: #0ca30c;
+  --card-shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px -8px rgba(0,0,0,.5);
 }
 :root[data-theme="light"]{
-  --surface-1: #fcfcfb; --surface-2: #ffffff; --page: #f9f9f7;
+  --surface-1: #fcfcfb; --surface-2: #ffffff; --page: #f4f4f2;
   --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #898781;
   --grid: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11,11,11,0.10);
   --series-1: #2a78d6; --series-2: #1baf7a; --series-3: #eda100; --series-4: #008300;
   --series-5: #4a3aa7; --series-6: #e34948; --series-7: #e87ba4; --series-8: #eb6834;
   --good-text: #006300;
+  --card-shadow: 0 1px 2px rgba(11,11,11,.04), 0 6px 20px -8px rgba(11,11,11,.10);
+}
+
+/* fixed-dark sidebar palette — brand identity, independent of light/dark mode */
+:root{
+  --sb-bg: #171826;
+  --sb-bg-2: #1e2032;
+  --sb-text: #c7c8dc;
+  --sb-text-dim: #8688a3;
+  --sb-active-bg: #2b2d47;
+  --sb-active-text: #ffffff;
+  --sb-accent: #6a7bf7;
+  --sb-border: rgba(255,255,255,0.07);
 }
 
 *{box-sizing:border-box;}
-html,body{margin:0;padding:0;}
+html,body{margin:0;padding:0;height:100%;}
 body{
   background:var(--page);
   color:var(--text-primary);
@@ -82,37 +83,98 @@ body{
   font-size:14px;
   line-height:1.45;
 }
-.wrap{max-width:1400px;margin:0 auto;padding:20px 20px 80px;}
+button{font-family:inherit;}
 
-/* ---------- Top bar ---------- */
-.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px;}
-.brand{display:flex;align-items:baseline;gap:10px;}
-.brand h1{font-size:20px;margin:0;font-weight:700;letter-spacing:-0.01em;}
-.brand .sub{color:var(--text-muted);font-size:12px;}
-.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-select, .btn{
-  font: inherit;
-  background:var(--surface-2);
-  color:var(--text-primary);
-  border:1px solid var(--border);
-  border-radius:8px;
-  padding:7px 10px;
-  cursor:pointer;
+/* ============================= Shell layout ============================= */
+.app-shell{display:flex;min-height:100vh;}
+
+/* ---------- Sidebar ---------- */
+.sidebar{
+  width:var(--sidebar-w);flex:0 0 var(--sidebar-w);
+  background:var(--sb-bg);color:var(--sb-text);
+  display:flex;flex-direction:column;
+  position:sticky;top:0;height:100vh;
 }
-.btn.primary{background:var(--series-1);color:#fff;border-color:transparent;font-weight:600;}
-.btn.ghost{background:transparent;}
-.updated{color:var(--text-muted);font-size:12px;}
+.sidebar-brand{
+  display:flex;align-items:center;gap:10px;padding:20px 20px 18px;
+  border-bottom:1px solid var(--sb-border);
+}
+.sidebar-brand .logo{
+  width:34px;height:34px;border-radius:9px;flex:0 0 34px;
+  background:linear-gradient(135deg, var(--sb-accent), #a06af7);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;
+}
+.sidebar-brand .txt h1{font-size:14.5px;margin:0;color:#fff;font-weight:700;letter-spacing:-0.01em;}
+.sidebar-brand .txt .sub{font-size:11px;color:var(--sb-text-dim);margin-top:1px;}
+
+.sidebar-nav{flex:1;padding:14px 12px;overflow-y:auto;}
+.sidebar-nav .nav-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--sb-text-dim);padding:8px 10px 6px;}
+.nav-item{
+  display:flex;align-items:center;gap:11px;width:100%;
+  padding:9px 12px;margin-bottom:2px;border:none;background:transparent;color:var(--sb-text);
+  border-radius:9px;cursor:pointer;font-size:13.5px;font-weight:500;text-align:left;
+  transition:background .12s, color .12s;
+}
+.nav-item svg{flex:0 0 18px;width:18px;height:18px;opacity:.85;}
+.nav-item:hover{background:var(--sb-bg-2);color:#fff;}
+.nav-item.active{background:var(--sb-active-bg);color:var(--sb-active-text);}
+.nav-item.active svg{opacity:1;}
+.nav-item .badge{
+  margin-left:auto;font-size:10.5px;font-weight:700;color:var(--sb-text-dim);
+  font-variant-numeric:tabular-nums;
+}
+
+.sidebar-foot{padding:14px 16px 18px;border-top:1px solid var(--sb-border);}
+.sidebar-foot .updated{font-size:11px;color:var(--sb-text-dim);margin-bottom:10px;line-height:1.4;white-space:pre-line;}
+.sidebar-foot .btn-reload{
+  width:100%;display:flex;align-items:center;justify-content:center;gap:7px;
+  padding:8px 10px;border-radius:9px;border:1px solid var(--sb-border);
+  background:var(--sb-bg-2);color:var(--sb-text);font-size:12.5px;font-weight:600;cursor:pointer;
+}
+.sidebar-foot .btn-reload:hover{background:var(--sb-active-bg);color:#fff;}
+
+/* ---------- Main ---------- */
+.main{flex:1;min-width:0;padding:22px 28px 60px;}
+.topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px;}
+.topbar h2{font-size:20px;margin:0 0 3px;font-weight:700;letter-spacing:-0.01em;}
+.topbar .crumb{color:var(--text-muted);font-size:12.5px;}
+.topbar .right{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+
+/* ---------- Segmented control ---------- */
+.segmented{
+  display:inline-flex;gap:2px;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:10px;padding:3px;flex-wrap:wrap;max-width:100%;
+}
+.segmented.scroll{flex-wrap:nowrap;overflow-x:auto;max-width:min(100%, 640px);}
+.seg-btn{
+  border:none;background:transparent;color:var(--text-secondary);font:inherit;font-size:12.5px;font-weight:600;
+  padding:6px 12px;border-radius:7px;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s;
+}
+.seg-btn:hover{background:var(--border);color:var(--text-primary);}
+.seg-btn.active{background:var(--series-1);color:#fff;}
+.filter-group{display:flex;flex-direction:column;gap:6px;}
+.filter-group .fg-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);font-weight:700;}
+.filter-bar{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:20px;padding:14px 16px;background:var(--surface-1);border:1px solid var(--border);border-radius:12px;}
+
+.btn{
+  font: inherit;background:var(--surface-2);color:var(--text-primary);border:1px solid var(--border);
+  border-radius:9px;padding:8px 12px;cursor:pointer;font-weight:600;font-size:12.5px;
+}
+.btn.primary{background:var(--series-1);color:#fff;border-color:transparent;}
 
 /* ---------- Drop zone ---------- */
+#dzScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+#dzInner{max-width:560px;width:100%;}
+#dzInner .dz-brand{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:22px;}
+#dzInner .dz-brand .logo{
+  width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg, var(--sb-accent), #a06af7);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:17px;
+}
+#dzInner .dz-brand h1{font-size:19px;margin:0;font-weight:700;}
 #dropzone{
-  border:2px dashed var(--baseline);
-  border-radius:16px;
-  padding:56px 24px;
-  text-align:center;
-  color:var(--text-secondary);
-  background:var(--surface-1);
-  transition:border-color .15s, background .15s;
-  cursor:pointer;
+  border:2px dashed var(--baseline);border-radius:18px;padding:52px 24px;text-align:center;
+  color:var(--text-secondary);background:var(--surface-1);box-shadow:var(--card-shadow);
+  transition:border-color .15s, background .15s;cursor:pointer;
 }
 #dropzone.drag{border-color:var(--series-1);background:color-mix(in srgb, var(--series-1) 8%, var(--surface-1));}
 #dropzone h2{margin:0 0 6px;color:var(--text-primary);font-size:18px;}
@@ -121,90 +183,105 @@ select, .btn{
 #fileInput{display:none;}
 #dzError{color:var(--critical);font-size:13px;margin-top:12px;display:none;white-space:pre-line;}
 
-/* ---------- Sections ---------- */
-#dashboard{display:none;}
-.section{margin:28px 0;}
+/* ---------- App (hidden until file loaded) ---------- */
+.app-shell{display:none;}
+
+/* ---------- Tabs ---------- */
+.tab-panel{display:none;}
+.tab-panel.active{display:block;}
+
+.section{margin:0 0 26px;}
 .section-title{
-  font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  font-size:12.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
   color:var(--text-secondary);margin:0 0 12px;display:flex;align-items:center;gap:10px;
 }
 .section-title .line{flex:1;height:1px;background:var(--grid);}
 
 /* ---------- KPI tiles ---------- */
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:26px;}
 .tile{
-  background:var(--surface-1);border:1px solid var(--border);border-radius:12px;
-  padding:14px 16px;
+  position:relative;background:var(--surface-1);border:1px solid var(--border);border-radius:14px;
+  padding:16px 16px 15px;box-shadow:var(--card-shadow);overflow:hidden;
 }
-.tile .label{color:var(--text-muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;}
-.tile .value{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.01em;}
-.tile .delta{font-size:12px;margin-top:4px;font-variant-numeric:tabular-nums;}
+.tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent, var(--series-1));}
+.tile .tile-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.tile .icon{
+  width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  background:color-mix(in srgb, var(--accent, var(--series-1)) 16%, transparent);
+  color:var(--accent, var(--series-1));flex:0 0 32px;
+}
+.tile .icon svg{width:17px;height:17px;}
+.tile .label{color:var(--text-muted);font-size:11px;text-transform:uppercase;letter-spacing:.03em;font-weight:700;}
+.tile .value{font-size:23px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.01em;}
+.tile .delta{font-size:12px;margin-top:5px;font-variant-numeric:tabular-nums;font-weight:600;}
 .delta.good{color:var(--good-text);}
 .delta.bad{color:var(--critical);}
 .delta.neutral{color:var(--text-muted);}
 
 /* ---------- Cards / tables ---------- */
 .card{
-  background:var(--surface-1);border:1px solid var(--border);border-radius:12px;
-  padding:16px;overflow-x:auto;margin-bottom:14px;
+  background:var(--surface-1);border:1px solid var(--border);border-radius:14px;
+  padding:18px;overflow-x:auto;margin-bottom:14px;box-shadow:var(--card-shadow);
 }
-.card h3{margin:0 0 10px;font-size:14px;font-weight:700;}
-.card .cap{color:var(--text-muted);font-size:12px;margin:-6px 0 12px;}
+.card h3{margin:0 0 3px;font-size:14px;font-weight:700;}
+.card .cap{color:var(--text-muted);font-size:12px;margin:0 0 14px;}
 table{border-collapse:collapse;width:100%;font-size:12.5px;white-space:nowrap;}
 table.wide{min-width:900px;}
-th,td{padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;}
+th,td{padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums;}
 th:first-child,td:first-child{text-align:left;font-variant-numeric:normal;position:sticky;left:0;background:var(--surface-1);}
-thead th{color:var(--text-muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.02em;border-bottom:1px solid var(--grid);}
+thead th{color:var(--text-muted);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.02em;border-bottom:1px solid var(--grid);padding-bottom:9px;}
 tbody tr{border-bottom:1px solid var(--grid);}
 tbody tr:last-child{border-bottom:none;}
+tbody tr:hover td{background:color-mix(in srgb, var(--series-1) 5%, transparent);}
+tbody tr:hover td:first-child{background:color-mix(in srgb, var(--series-1) 7%, var(--surface-1));}
 tbody tr.total td{font-weight:700;border-top:1px solid var(--baseline);}
+tbody tr.total td:first-child{background:var(--surface-1);}
 tbody tr.sub td{color:var(--text-secondary);}
-td.unit{color:var(--text-muted);font-size:11px;text-align:left;}
+td.unit{color:var(--text-muted);font-size:10.5px;text-align:left;}
 td.pos{color:var(--good-text);}
 td.neg{color:var(--critical);}
 td.dash{color:var(--text-muted);}
 
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-@media (max-width:900px){.grid-2{grid-template-columns:1fr;}}
+@media (max-width:980px){.grid-2{grid-template-columns:1fr;}}
 
 /* ---------- Charts ---------- */
-.chart-legend{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;font-size:12px;color:var(--text-secondary);}
+.chart-legend{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--text-secondary);}
 .chart-legend .sw{display:inline-flex;align-items:center;gap:6px;}
 .chart-legend .dot{width:9px;height:9px;border-radius:2px;display:inline-block;}
 .chart-tooltip{
   position:absolute;pointer-events:none;background:var(--surface-2);border:1px solid var(--border);
-  border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.15);
-  transform:translate(-50%,-110%);white-space:nowrap;z-index:5;opacity:0;transition:opacity .1s;
+  border-radius:9px;padding:8px 11px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.18);
+  transform:translate(-50%,-112%);white-space:nowrap;z-index:5;opacity:0;transition:opacity .1s;
 }
 .chart-wrap{position:relative;}
 svg.chart{width:100%;height:auto;overflow:visible;}
 .bar{transition:opacity .1s;}
-.bar:hover{opacity:.8;}
+.bar:hover{opacity:.82;}
 .axis-label{fill:var(--text-muted);font-size:10.5px;}
 .grid-line{stroke:var(--grid);stroke-width:1;}
 .baseline{stroke:var(--baseline);stroke-width:1;}
 
-footer{color:var(--text-muted);font-size:11.5px;text-align:center;margin-top:40px;}
+footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;margin-top:30px;}
 .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;}
 .pill.good{background:color-mix(in srgb, var(--good) 16%, transparent);color:var(--good-text);}
 .pill.bad{background:color-mix(in srgb, var(--critical) 16%, transparent);color:var(--critical);}
+
+#menuBtn{display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);cursor:pointer;margin-right:10px;flex:0 0 auto;}
+
+@media (max-width:760px){
+  .sidebar{position:fixed;left:0;top:0;bottom:0;transform:translateX(-100%);transition:transform .18s;z-index:20;}
+  .sidebar.open{transform:translateX(0);}
+  .main{padding:16px;}
+  #menuBtn{display:inline-flex;}
+}
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <div class="topbar">
-    <div class="brand">
-      <h1>Panel de Producción</h1>
-      <span class="sub">INDAMA</span>
-    </div>
-    <div class="controls" id="topControls" style="display:none;">
-      <select id="yearSelect"></select>
-      <button class="btn ghost" id="reloadBtn">Cargar otro Excel</button>
-    </div>
-  </div>
-
-  <div id="dzScreen">
+<div id="dzScreen">
+  <div id="dzInner">
+    <div class="dz-brand"><div class="logo">IN</div><h1>Panel de Producción — INDAMA</h1></div>
     <div id="dropzone" tabindex="0">
       <h2>Arrastra aquí el Excel de operaciones</h2>
       <p>o haz clic para seleccionar el archivo (.xlsx)</p>
@@ -213,65 +290,177 @@ footer{color:var(--text-muted);font-size:11.5px;text-align:center;margin-top:40p
       <div id="dzError"></div>
     </div>
   </div>
+</div>
 
-  <div id="dashboard">
+<div class="app-shell" id="appShell">
 
-    <div class="section">
-      <div class="section-title"><span>Resumen ejecutivo — Planta</span><span class="line"></span><span class="updated" id="updatedLabel"></span></div>
-      <div class="kpi-grid" id="kpiGrid"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="logo">IN</div>
+      <div class="txt"><h1>INDAMA</h1><div class="sub">Panel de Producción</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Navegación</div>
+      <button class="nav-item active" data-tab="resumen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>
+        <span>Resumen</span>
+      </button>
+      <button class="nav-item" data-tab="maquina">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        <span>Detalle por Máquina</span>
+      </button>
+      <button class="nav-item" data-tab="espesor">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.4 2.4 0 0 1 0-3.4l2.6-2.6a2.4 2.4 0 0 1 3.4 0z"></path><path d="M14.5 5.5 18.5 9.5"></path><path d="M11.5 8.5 14 11"></path><path d="M8.5 11.5 11 14"></path><path d="M5.5 14.5 8 17"></path></svg>
+        <span>Análisis por Espesor</span>
+      </button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="updated" id="updatedLabel"></div>
+      <button class="btn-reload" id="reloadBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
+        Cargar otro Excel
+      </button>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <div class="topbar">
+      <div style="display:flex;align-items:center;">
+        <button id="menuBtn" aria-label="Menú">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+        <div>
+          <h2 id="pageTitle">Resumen Ejecutivo</h2>
+          <div class="crumb" id="pageCrumb">Planta · Año completo</div>
+        </div>
+      </div>
+      <div class="right">
+        <div class="filter-group">
+          <span class="fg-label">Año</span>
+          <div class="segmented" id="yearSeg"></div>
+        </div>
+      </div>
     </div>
 
-    <div class="section">
-      <div class="section-title"><span>Resumen mensual — Planta</span><span class="line"></span></div>
-      <div class="card"><div id="resumenTable"></div></div>
-    </div>
+    <!-- ================= TAB: Resumen ================= -->
+    <section id="tab-resumen" class="tab-panel active">
+      <div class="section">
+        <div class="kpi-grid" id="kpiGrid"></div>
+      </div>
 
-    <div class="section">
-      <div class="section-title"><span>Producción vs. Presupuesto</span><span class="line"></span></div>
-      <div class="grid-2">
-        <div class="card">
-          <h3>Producción contra presupuesto</h3>
-          <div class="cap">kg reales vs. kg presupuestados por mes</div>
-          <div id="chartProdPpto"></div>
+      <div class="section">
+        <div class="section-title"><span>Tendencias — Planta</span><span class="line"></span></div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Producción: estándar vs. real</h3>
+            <div class="cap">kg por mes</div>
+            <div id="chartProdTrend"></div>
+          </div>
+          <div class="card">
+            <h3>OEE Planta mensual</h3>
+            <div class="cap">% vs. meta calculada</div>
+            <div id="chartOEETrend"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title"><span>Resumen mensual — Planta</span><span class="line"></span></div>
+        <div class="card"><div id="resumenTable"></div></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title"><span>Producción vs. Presupuesto</span><span class="line"></span></div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Producción contra presupuesto</h3>
+            <div class="cap">kg reales vs. kg presupuestados por mes</div>
+            <div id="chartProdPpto"></div>
+          </div>
+          <div class="card">
+            <h3>Chatarra contra presupuesto</h3>
+            <div class="cap">% chatarra planta vs. meta (4,6%)</div>
+            <div id="chartChatPpto"></div>
+          </div>
+        </div>
+        <div class="card"><div id="pptoTable"></div></div>
+      </div>
+    </section>
+
+    <!-- ================= TAB: Detalle por Máquina ================= -->
+    <section id="tab-maquina" class="tab-panel">
+      <div class="filter-bar">
+        <div class="filter-group">
+          <span class="fg-label">Mes</span>
+          <div class="segmented scroll" id="monthSeg"></div>
+        </div>
+        <div class="filter-group">
+          <span class="fg-label">Máquina</span>
+          <div class="segmented scroll" id="machineSeg"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title"><span>Detalle mensual — <span id="mesLabel"></span></span><span class="line"></span></div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Producción estándar por máquina</h3>
+            <div class="cap">kg — <span id="mesLabel2"></span></div>
+            <div id="chartMesProd"></div>
+          </div>
+          <div class="card">
+            <h3>Chatarra por máquina vs. meta</h3>
+            <div class="cap">% — <span id="mesLabel3"></span></div>
+            <div id="chartMesChatarra"></div>
+          </div>
         </div>
         <div class="card">
-          <h3>Chatarra contra presupuesto</h3>
-          <div class="cap">% chatarra planta vs. meta (4,6%)</div>
-          <div id="chartChatPpto"></div>
+          <h3>OEE por máquina vs. meta</h3>
+          <div class="cap">% — <span id="mesLabel4"></span></div>
+          <div id="chartMesOEE"></div>
         </div>
+        <div class="card"><div id="detalleMesProd"></div></div>
+        <div class="card"><div id="detalleMesVales"></div></div>
+        <div class="card"><div id="detalleMesOEE"></div></div>
       </div>
-      <div class="card"><div id="pptoTable"></div></div>
-    </div>
 
-    <div class="section">
-      <div class="section-title">
-        <span>Detalle por máquina — mes</span><span class="line"></span>
-        <select id="monthSelect"></select>
+      <div class="section">
+        <div class="section-title"><span>Detalle anual — <span id="maqLabel"></span></span><span class="line"></span></div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Producción estándar — tendencia</h3>
+            <div class="cap">kg por mes — <span id="maqLabel2"></span></div>
+            <div id="chartAnioProd"></div>
+          </div>
+          <div class="card">
+            <h3>OEE — tendencia vs. meta</h3>
+            <div class="cap">% por mes — <span id="maqLabel3"></span></div>
+            <div id="chartAnioOEE"></div>
+          </div>
+        </div>
+        <div class="card"><div id="detalleAnioProd"></div></div>
+        <div class="card"><div id="detalleAnioVales"></div></div>
+        <div class="card"><div id="detalleAnioOEE"></div></div>
       </div>
-      <div class="card"><div id="detalleMesProd"></div></div>
-      <div class="card"><div id="detalleMesVales"></div></div>
-      <div class="card"><div id="detalleMesOEE"></div></div>
-    </div>
+    </section>
 
-    <div class="section">
-      <div class="section-title">
-        <span>Detalle por máquina — año</span><span class="line"></span>
-        <select id="machineSelect"></select>
+    <!-- ================= TAB: Análisis por Espesor ================= -->
+    <section id="tab-espesor" class="tab-panel">
+      <div class="section">
+        <div class="section-title"><span>Producción por espesor</span><span class="line"></span></div>
+        <div class="card">
+          <h3>Mix de espesores por mes</h3>
+          <div class="cap">% de producción — composición apilada</div>
+          <div id="chartEspesorStack"></div>
+        </div>
+        <div class="card"><div id="espesorPctTable"></div></div>
+        <div class="card"><div id="espesorKgTable"></div></div>
       </div>
-      <div class="card"><div id="detalleAnioProd"></div></div>
-      <div class="card"><div id="detalleAnioVales"></div></div>
-      <div class="card"><div id="detalleAnioOEE"></div></div>
-    </div>
+    </section>
 
-    <div class="section">
-      <div class="section-title"><span>Análisis por espesor</span><span class="line"></span></div>
-      <div class="card"><div id="espesorPctTable"></div></div>
-      <div class="card"><div id="espesorKgTable"></div></div>
-    </div>
-
-    <footer>Panel generado localmente en tu navegador a partir del Excel cargado. Ningún dato sale de este equipo.</footer>
-  </div>
-
+    <footer class="app-footer">Panel generado localmente en tu navegador a partir del Excel cargado. Ningún dato sale de este equipo.</footer>
+  </main>
 </div>
 
 <script>
@@ -1093,7 +1282,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     return {
       resumenPlanta: resumenPlanta, kpiHeader: kpiHeader, presupuesto: presupuesto,
       detalleMes: detalleMes, detalleAnio: detalleAnio, espesorAnalysis: espesorAnalysis,
-      pptoTotalVal: pptoTotalVal
+      pptoTotalVal: pptoTotalVal, oeeMetaVal: oeeMetaVal
     };
   }
 
@@ -1157,7 +1346,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     var legendHtml = '<div class="chart-legend">' +
       '<span class="sw"><span class="dot" style="background:' + opts.barColorVar + '"></span>' + opts.seriesLabel + '</span>' +
-      '<span class="sw"><span class="dot" style="background:var(--text-primary)"></span>' + opts.targetLabel + '</span>' +
+      (opts.targetLabel ? '<span class="sw"><span class="dot" style="background:var(--text-primary)"></span>' + opts.targetLabel + '</span>' : '') +
       '</div>';
 
     var svg = '<div class="chart-wrap">' + legendHtml +
@@ -1190,6 +1379,161 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       barEl.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
     });
   }
+
+  function renderLineChart(container, opts) {
+    // opts: {categories, series:[{name,color,values}], formatValue}
+    chartUid++;
+    var W = 640, H = 240, padL = 8, padR = 8, padT = 14, padB = 26;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var n = opts.categories.length;
+
+    var allVals = [];
+    opts.series.forEach(function (s) { s.values.forEach(function (v) { if (isNum(v)) allVals.push(v); }); });
+    var maxV = allVals.length ? Math.max.apply(null, allVals) : 1;
+    var minV = allVals.length ? Math.min(0, Math.min.apply(null, allVals)) : 0;
+    maxV = maxV * 1.15 || 1;
+
+    function x(i) { return n <= 1 ? padL + plotW / 2 : padL + plotW * i / (n - 1); }
+    function y(v) { return padT + plotH - ((v - minV) / ((maxV - minV) || 1)) * plotH; }
+    var baseline = y(0);
+
+    var gridLines = 4, gridHtml = '', labelsHtml = '';
+    for (var g = 0; g <= gridLines; g++) {
+      var v = minV + (maxV - minV) * g / gridLines;
+      var yy = y(v);
+      gridHtml += '<line class="grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + yy + '" y2="' + yy + '"></line>';
+      labelsHtml += '<text class="axis-label" x="' + padL + '" y="' + (yy - 3) + '">' + opts.formatValue(v, true) + '</text>';
+    }
+    var xLabelsHtml = '';
+    opts.categories.forEach(function (cat, i) {
+      xLabelsHtml += '<text class="axis-label" x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + cat + '</text>';
+    });
+
+    var seriesHtml = '', legendHtml = '<div class="chart-legend">';
+    opts.series.forEach(function (s) {
+      var d = '', open = false;
+      s.values.forEach(function (v, i) {
+        if (!isNum(v)) { open = false; return; }
+        d += (open ? 'L' : 'M') + x(i) + ',' + y(v) + ' ';
+        open = true;
+      });
+      seriesHtml += '<path fill="none" stroke="' + s.color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="' + d.trim() + '"></path>';
+      s.values.forEach(function (v, i) {
+        if (!isNum(v)) return;
+        seriesHtml += '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="3.5" fill="' + s.color + '" stroke="var(--surface-1)" stroke-width="2"></circle>';
+      });
+      legendHtml += '<span class="sw"><span class="dot" style="background:' + s.color + '"></span>' + s.name + '</span>';
+    });
+    legendHtml += '</div>';
+
+    var tipId = 'tip' + chartUid;
+    var bandW = n > 1 ? plotW / (n - 1) : plotW;
+    var hitHtml = '';
+    opts.categories.forEach(function (cat, i) {
+      var hx = x(i);
+      hitHtml += '<rect class="hit-col" data-i="' + i + '" x="' + (hx - bandW / 2) + '" y="' + padT + '" width="' + bandW + '" height="' + plotH + '" fill="transparent"></rect>';
+    });
+
+    container.innerHTML = '<div class="chart-wrap">' + legendHtml +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
+      '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
+      gridHtml + labelsHtml + seriesHtml + xLabelsHtml + hitHtml +
+      '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
+
+    var tip = container.querySelector('#' + tipId);
+    var wrapEl = container.querySelector('.chart-wrap');
+    container.querySelectorAll('.hit-col').forEach(function (hit) {
+      var i = parseInt(hit.getAttribute('data-i'), 10);
+      hit.addEventListener('mousemove', function () {
+        var rect = wrapEl.getBoundingClientRect();
+        var scale = rect.width / W;
+        var firstVal = opts.series.map(function (s) { return s.values[i]; }).filter(isNum)[0];
+        var top = (isNum(firstVal) ? y(firstVal) : padT) * scale;
+        tip.style.left = (x(i) * scale) + 'px';
+        tip.style.top = top + 'px';
+        var html = '<strong>' + opts.categories[i] + '</strong>';
+        opts.series.forEach(function (s) {
+          var v = s.values[i];
+          html += '<br><span style="color:' + s.color + '">●</span> ' + s.name + ': ' + (isNum(v) ? opts.formatValue(v) : '-');
+        });
+        tip.innerHTML = html;
+        tip.style.opacity = 1;
+      });
+      hit.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+    });
+  }
+
+  function renderStackedBarChart(container, opts) {
+    // opts: {categories, series:[{name,color,values(fractions 0..1)}]}
+    chartUid++;
+    var W = 680, H = 260, padL = 8, padR = 8, padT = 10, padB = 26;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var n = opts.categories.length;
+    var bandW = plotW / n;
+    var barW = Math.max(10, Math.min(34, bandW * 0.6));
+    var gap = 2;
+
+    var gridLines = 4, gridHtml = '', labelsHtml = '';
+    for (var g = 0; g <= gridLines; g++) {
+      var frac = g / gridLines;
+      var yy = padT + plotH - frac * plotH;
+      gridHtml += '<line class="grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + yy + '" y2="' + yy + '"></line>';
+      labelsHtml += '<text class="axis-label" x="' + padL + '" y="' + (yy - 3) + '">' + Math.round(frac * 100) + '%</text>';
+    }
+
+    var barsHtml = '', xLabelsHtml = '';
+    var segs = [];
+    opts.categories.forEach(function (cat, i) {
+      var cx = padL + bandW * i + bandW / 2;
+      xLabelsHtml += '<text class="axis-label" x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle">' + cat + '</text>';
+      var total = 0;
+      opts.series.forEach(function (s) { total += (s.values[i] || 0); });
+      if (!total) return;
+      var yCursor = padT + plotH;
+      opts.series.forEach(function (s, si) {
+        var v = s.values[i] || 0;
+        if (v <= 0) return;
+        var segH = (v / total) * plotH;
+        var top = yCursor - segH;
+        var x0 = cx - barW / 2;
+        var hDraw = Math.max(0, segH - gap);
+        barsHtml += '<rect class="bar" x="' + x0 + '" y="' + top + '" width="' + barW + '" height="' + hDraw + '" rx="2" fill="' + s.color + '" data-i="' + i + '" data-s="' + si + '"></rect>';
+        segs.push({ i: i, si: si, cat: cat, name: s.name, v: v / total, cx: cx, top: top });
+        yCursor -= segH;
+      });
+    });
+
+    var legendHtml = '<div class="chart-legend">' + opts.series.map(function (s) {
+      return '<span class="sw"><span class="dot" style="background:' + s.color + '"></span>' + s.name + '</span>';
+    }).join('') + '</div>';
+
+    var tipId = 'tip' + chartUid;
+    container.innerHTML = '<div class="chart-wrap">' + legendHtml +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
+      '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + (padT + plotH) + '" y2="' + (padT + plotH) + '"></line>' +
+      gridHtml + labelsHtml + barsHtml + xLabelsHtml +
+      '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
+
+    var tip = container.querySelector('#' + tipId);
+    var wrapEl = container.querySelector('.chart-wrap');
+    container.querySelectorAll('.bar').forEach(function (barEl) {
+      var i = parseInt(barEl.getAttribute('data-i'), 10), si = parseInt(barEl.getAttribute('data-s'), 10);
+      var seg = segs.filter(function (s) { return s.i === i && s.si === si; })[0];
+      if (!seg) return;
+      barEl.addEventListener('mousemove', function () {
+        var rect = wrapEl.getBoundingClientRect();
+        var scale = rect.width / W;
+        tip.style.left = (seg.cx * scale) + 'px';
+        tip.style.top = (seg.top * scale) + 'px';
+        tip.style.opacity = 1;
+        tip.innerHTML = '<strong>' + seg.cat + '</strong><br>' + seg.name + ': ' + fmtPct(seg.v, 1);
+      });
+      barEl.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+    });
+  }
+
+  var SERIES_COLORS = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)',
+    'var(--series-5)', 'var(--series-6)', 'var(--series-7)', 'var(--series-8)'];
 
   /* =========================================================================
    * Table rendering helpers
@@ -1235,23 +1579,35 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     return Math.round(v);
   }
 
+  var ICON_GAUGE = '<path d="M12 21a9 9 0 1 1 9-9"></path><line x1="12" y1="12" x2="16" y2="8"></line><circle cx="12" cy="12" r="1"></circle>';
+  var ICON_BOX = '<rect x="4" y="7" width="16" height="13" rx="1.5"></rect><path d="M4 7l8-4 8 4"></path><path d="M12 12v8"></path>';
+  var ICON_TRASH = '<path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"></path><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"></path>';
+  var ICON_GEAR = '<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>';
+  var ICON_LAYERS = '<path d="M12 2 2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path>';
+  var ICON_TARGET = '<circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1"></circle>';
+  var ICON_TREND = '<polyline points="3 17 9 11 13 15 21 7"></polyline><polyline points="14 7 21 7 21 14"></polyline>';
+
   function renderKPIs(kpi) {
     var tiles = [
-      { label: 'OEE Planta Global', value: fmtPct(kpi.oeePlantaGlobal, 1) },
-      { label: 'Kilos Fabricados', value: fmtInt(kpi.kilosFabricados) + ' kg' },
-      { label: 'Chatarra', value: fmtInt(kpi.chatarraKg) + ' kg' },
-      { label: 'Chatarra Máquinas', value: fmtPct(kpi.chatarraMaquinasPct, 2) },
-      { label: 'Chatarra Braner', value: fmtPct(kpi.chatarraBranerPct, 2) },
-      { label: 'Chatarra Planta', value: fmtPct(kpi.chatarraPlantaPct, 2) },
-      { label: 'Meta Chatarra', value: fmtPct(kpi.metaChatarra, 1) },
+      { label: 'OEE Planta Global', value: fmtPct(kpi.oeePlantaGlobal, 1), icon: ICON_GAUGE, accent: 'var(--series-5)' },
+      { label: 'Kilos Fabricados', value: fmtInt(kpi.kilosFabricados) + ' kg', icon: ICON_BOX, accent: 'var(--series-1)' },
+      { label: 'Chatarra', value: fmtInt(kpi.chatarraKg) + ' kg', icon: ICON_TRASH, accent: 'var(--series-6)' },
+      { label: 'Chatarra Máquinas', value: fmtPct(kpi.chatarraMaquinasPct, 2), icon: ICON_GEAR, accent: 'var(--series-8)' },
+      { label: 'Chatarra Braner', value: fmtPct(kpi.chatarraBranerPct, 2), icon: ICON_LAYERS, accent: 'var(--series-7)' },
+      { label: 'Chatarra Planta', value: fmtPct(kpi.chatarraPlantaPct, 2), icon: ICON_TARGET, accent: 'var(--series-2)' },
+      { label: 'Meta Chatarra', value: fmtPct(kpi.metaChatarra, 1), icon: ICON_TARGET, accent: 'var(--series-4)' },
       {
         label: 'Desviación', value: fmtSigned(kpi.desviacionChatarra, function (v) { return fmtPct(v, 2); }),
-        deltaClass: deltaClass(kpi.desviacionChatarra, true)
+        icon: ICON_TREND, accent: 'var(--series-3)',
+        deltaClass: deltaClass(kpi.desviacionChatarra, true),
+        deltaText: kpi.desviacionChatarra == null ? '' : (kpi.desviacionChatarra >= 0 ? 'sobre la meta' : 'bajo la meta')
       }
     ];
     el('kpiGrid').innerHTML = tiles.map(function (t) {
-      return '<div class="tile"><div class="label">' + t.label + '</div><div class="value">' + t.value + '</div>' +
-        (t.deltaClass ? '<div class="delta ' + t.deltaClass + '"></div>' : '') + '</div>';
+      return '<div class="tile" style="--accent:' + t.accent + '">' +
+        '<div class="tile-top"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + t.icon + '</svg></span></div>' +
+        '<div class="label">' + t.label + '</div><div class="value">' + t.value + '</div>' +
+        (t.deltaClass ? '<div class="delta ' + t.deltaClass + '">' + (t.deltaText || '') + '</div>' : '') + '</div>';
     }).join('');
   }
 
@@ -1267,6 +1623,26 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     ];
     renderMonthlyTable(el('resumenTable'), 'Planta ' + anio, rows);
     return resumen;
+  }
+
+  function renderTendencias(anio, resumen) {
+    renderLineChart(el('chartProdTrend'), {
+      categories: resumen.map(function (m) { return m.mesAbbr; }),
+      series: [
+        { name: 'Estándar', color: 'var(--series-1)', values: resumen.map(function (m) { return m.prodEstandar; }) },
+        { name: 'Real', color: 'var(--series-3)', values: resumen.map(function (m) { return m.prodReal; }) }
+      ],
+      formatValue: fmtKgTick
+    });
+    var metaSerie = resumen.map(function (m) { return STATE.engine.oeeMetaVal('OEE Planta', m.mes); });
+    renderLineChart(el('chartOEETrend'), {
+      categories: resumen.map(function (m) { return m.mesAbbr; }),
+      series: [
+        { name: 'OEE real', color: 'var(--series-1)', values: resumen.map(function (m) { return m.oeeMensual; }) },
+        { name: 'Meta', color: 'var(--series-6)', values: metaSerie }
+      ],
+      formatValue: fmtPctTick
+    });
   }
 
   function renderPresupuesto(anio, resumen) {
@@ -1304,6 +1680,30 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   function renderDetalleMes(anio, mesNombre) {
     var det = STATE.engine.detalleMes(anio, mesNombre);
     var maquinas = det.columnas.map(function (c) { return c.maquina; });
+    ['mesLabel', 'mesLabel2', 'mesLabel3', 'mesLabel4'].forEach(function (id) { el(id).textContent = mesNombre; });
+
+    var maquinasCortas = maquinas.map(function (m) { return m.replace('Perfiladora', 'P').replace('Tubera', 'T'); });
+    renderBulletChart(el('chartMesProd'), {
+      categories: maquinasCortas,
+      values: det.columnas.map(function (c) { return c.prodEstandar; }),
+      targets: det.columnas.map(function () { return null; }),
+      formatValue: fmtKgTick, barColorVar: 'var(--series-1)',
+      seriesLabel: 'Producción estándar', targetLabel: ''
+    });
+    renderBulletChart(el('chartMesChatarra'), {
+      categories: maquinasCortas,
+      values: det.columnas.map(function (c) { return c.chatarraPct; }),
+      targets: det.columnas.map(function (c) { return c.metaChatarraEstandar; }),
+      formatValue: fmtPctTick, barColorVar: 'var(--series-6)',
+      seriesLabel: 'Chatarra', targetLabel: 'Meta'
+    });
+    renderBulletChart(el('chartMesOEE'), {
+      categories: maquinasCortas.filter(function (_, i) { return !det.columnas[i].isBraner; }),
+      values: det.columnas.filter(function (c) { return !c.isBraner; }).map(function (c) { return c.oee; }),
+      targets: det.columnas.filter(function (c) { return !c.isBraner; }).map(function (c) { return c.oeeMeta; }),
+      formatValue: fmtPctTick, barColorVar: 'var(--series-2)',
+      seriesLabel: 'OEE', targetLabel: 'Meta'
+    });
 
     renderMachineTable(el('detalleMesProd'), 'Producción & Chatarra — ' + mesNombre, maquinas, [
       { label: 'Producción Estándar', unit: 'kg', values: det.columnas.map(function (c) { return c.prodEstandar; }) },
@@ -1344,6 +1744,22 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
   function renderDetalleAnio(anio, maquina) {
     var det = STATE.engine.detalleAnio(anio, maquina);
+    ['maqLabel', 'maqLabel2', 'maqLabel3'].forEach(function (id) { el(id).textContent = maquina; });
+
+    renderLineChart(el('chartAnioProd'), {
+      categories: det.meses.map(function (m) { return m.mesAbbr; }),
+      series: [{ name: 'Producción estándar', color: 'var(--series-1)', values: det.meses.map(function (m) { return m.prodEstandar; }) }],
+      formatValue: fmtKgTick
+    });
+    renderLineChart(el('chartAnioOEE'), {
+      categories: det.meses.map(function (m) { return m.mesAbbr; }),
+      series: [
+        { name: 'OEE real', color: 'var(--series-2)', values: det.meses.map(function (m) { return m.oee; }) },
+        { name: 'Meta', color: 'var(--series-6)', values: det.meses.map(function (m) { return m.oeeMeta; }) }
+      ],
+      formatValue: fmtPctTick
+    });
+
     renderMonthlyTable(el('detalleAnioProd'), 'Producción & Chatarra — ' + maquina, [
       { label: 'Producción Estándar', unit: 'kg', values: det.meses.map(function (m) { return m.prodEstandar; }) },
       { label: 'Metros Lineales', unit: 'm', values: det.meses.map(function (m) { return m.metrosLineales; }) },
@@ -1375,6 +1791,27 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
   function renderEspesor(anio) {
     var esp = STATE.engine.espesorAnalysis(anio);
+
+    // cap the stacked chart at 8 categorical slots; fold the smallest into "Otros"
+    var totals = esp.pctTable.map(function (r) { return { espesor: r.espesor, total: sum(r.meses.filter(isNum)) }; });
+    totals.sort(function (a, b) { return b.total - a.total; });
+    var keep = totals.slice(0, 8).map(function (t) { return t.espesor; });
+    var chartSeries = [];
+    esp.pctTable.forEach(function (r, idx) {
+      if (keep.indexOf(r.espesor) === -1) return;
+      chartSeries.push({ name: r.espesor + ' mm', color: SERIES_COLORS[chartSeries.length % SERIES_COLORS.length], values: r.meses.map(function (v) { return v || 0; }) });
+    });
+    if (totals.length > 8) {
+      var otrosEsp = totals.slice(8).map(function (t) { return t.espesor; });
+      var otrosVals = MESES.map(function (_, i) {
+        var v = 0;
+        esp.pctTable.forEach(function (r) { if (otrosEsp.indexOf(r.espesor) >= 0 && isNum(r.meses[i])) v += r.meses[i]; });
+        return v;
+      });
+      chartSeries.push({ name: 'Otros', color: 'var(--text-muted)', values: otrosVals });
+    }
+    renderStackedBarChart(el('chartEspesorStack'), { categories: MESES_ABBR, series: chartSeries });
+
     var pctRows = esp.pctTable.map(function (r) { return { label: r.espesor + ' mm', values: r.meses, fmt: function (v) { return fmtPct(v, 1); } }; });
     pctRows.push({ label: 'Total', values: esp.totalPorMes.map(function (v) { return v ? 1 : null; }), fmt: function (v) { return fmtPct(v, 0); }, total: true });
     renderMonthlyTable(el('espesorPctTable'), 'Producción por Espesor (%) — ' + anio, pctRows);
@@ -1384,17 +1821,41 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     renderMonthlyTable(el('espesorKgTable'), 'Producción por Espesor (kg) — ' + anio, kgRows);
   }
 
-  function populateSelectors() {
-    var years = STATE.data.years;
-    el('yearSelect').innerHTML = years.map(function (y) { return '<option value="' + y + '">' + y + '</option>'; }).join('');
-    el('yearSelect').value = STATE.year;
+  function renderSegmented(containerId, options, activeValue, onPick) {
+    var container = el(containerId);
+    container.innerHTML = options.map(function (opt) {
+      var val = typeof opt === 'object' ? opt.value : opt;
+      var label = typeof opt === 'object' ? opt.label : opt;
+      var active = String(val) === String(activeValue);
+      return '<button type="button" class="seg-btn' + (active ? ' active' : '') + '" data-value="' + escapeHtml(val) + '">' + escapeHtml(label) + '</button>';
+    }).join('');
+    container.querySelectorAll('.seg-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        container.querySelectorAll('.seg-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        onPick(btn.getAttribute('data-value'));
+      });
+    });
+  }
 
-    el('monthSelect').innerHTML = MESES.map(function (m) { return '<option value="' + m + '">' + m + '</option>'; }).join('');
-    el('monthSelect').value = STATE.month;
+  function populateSelectors() {
+    renderSegmented('yearSeg', STATE.data.years, STATE.year, function (val) {
+      STATE.year = parseInt(val, 10);
+      STATE.month = pickDefaultMonth(STATE.year);
+      populateSelectors();
+      renderAll();
+    });
+
+    renderSegmented('monthSeg', MESES.map(function (m, i) { return { value: m, label: MESES_ABBR[i] }; }), STATE.month, function (val) {
+      STATE.month = val;
+      renderDetalleMes(STATE.year, STATE.month);
+    });
 
     var machines = STATE.data.machines;
-    el('machineSelect').innerHTML = machines.map(function (m) { return '<option value="' + escapeHtml(m) + '">' + escapeHtml(m) + '</option>'; }).join('');
-    el('machineSelect').value = STATE.machine;
+    renderSegmented('machineSeg', machines.map(function (m) { return { value: m, label: m.replace('Perfiladora', 'P.').replace('Tubera', 'T.') }; }), STATE.machine, function (val) {
+      STATE.machine = val;
+      renderDetalleAnio(STATE.year, STATE.machine);
+    });
   }
 
   function pickDefaultMonth(anio) {
@@ -1412,11 +1873,30 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     var resumen = renderResumen(anio);
     var kpi = STATE.engine.kpiHeader(anio, resumen);
     renderKPIs(kpi);
+    renderTendencias(anio, resumen);
     renderPresupuesto(anio, resumen);
     renderDetalleMes(anio, STATE.month);
     renderDetalleAnio(anio, STATE.machine);
     renderEspesor(anio);
-    el('updatedLabel').textContent = 'Año ' + anio + ' · generado ' + new Date().toLocaleString('es-CL');
+    el('updatedLabel').textContent = 'Año ' + anio + '\n' + new Date().toLocaleString('es-CL');
+  }
+
+  var TAB_META = {
+    resumen: { title: 'Resumen Ejecutivo', crumb: 'Planta · Año completo' },
+    maquina: { title: 'Detalle por Máquina', crumb: 'Producción, chatarra, costos y OEE por máquina' },
+    espesor: { title: 'Análisis por Espesor', crumb: 'Mix de producción por espesor' }
+  };
+
+  function switchTab(tab) {
+    document.querySelectorAll('.nav-item').forEach(function (btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
+    });
+    document.querySelectorAll('.tab-panel').forEach(function (panel) {
+      panel.classList.toggle('active', panel.id === 'tab-' + tab);
+    });
+    el('pageTitle').textContent = TAB_META[tab].title;
+    el('pageCrumb').textContent = TAB_META[tab].crumb;
+    el('sidebar').classList.remove('open');
   }
 
   function onFile(file) {
@@ -1432,8 +1912,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         STATE.machine = data.machines[0];
         populateSelectors();
         el('dzScreen').style.display = 'none';
-        el('dashboard').style.display = 'block';
-        el('topControls').style.display = 'flex';
+        el('appShell').style.display = 'flex';
         renderAll();
       } catch (err) {
         showError(err.message || String(err));
@@ -1465,26 +1944,15 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       if (f) onFile(f);
     });
     el('reloadBtn').addEventListener('click', function () {
-      el('dashboard').style.display = 'none';
-      el('topControls').style.display = 'none';
-      el('dzScreen').style.display = 'block';
+      el('appShell').style.display = 'none';
+      el('dzScreen').style.display = 'flex';
       el('dzError').style.display = 'none';
       input.value = '';
     });
-    el('yearSelect').addEventListener('change', function () {
-      STATE.year = parseInt(this.value, 10);
-      STATE.month = pickDefaultMonth(STATE.year);
-      populateSelectors();
-      renderAll();
+    document.querySelectorAll('.nav-item').forEach(function (btn) {
+      btn.addEventListener('click', function () { switchTab(btn.getAttribute('data-tab')); });
     });
-    el('monthSelect').addEventListener('change', function () {
-      STATE.month = this.value;
-      renderDetalleMes(STATE.year, STATE.month);
-    });
-    el('machineSelect').addEventListener('change', function () {
-      STATE.machine = this.value;
-      renderDetalleAnio(STATE.year, STATE.machine);
-    });
+    el('menuBtn').addEventListener('click', function () { el('sidebar').classList.toggle('open'); });
   }
 
   document.addEventListener('DOMContentLoaded', wireEvents);

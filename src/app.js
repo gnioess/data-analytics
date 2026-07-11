@@ -791,7 +791,7 @@
     return {
       resumenPlanta: resumenPlanta, kpiHeader: kpiHeader, presupuesto: presupuesto,
       detalleMes: detalleMes, detalleAnio: detalleAnio, espesorAnalysis: espesorAnalysis,
-      pptoTotalVal: pptoTotalVal
+      pptoTotalVal: pptoTotalVal, oeeMetaVal: oeeMetaVal
     };
   }
 
@@ -855,7 +855,7 @@
 
     var legendHtml = '<div class="chart-legend">' +
       '<span class="sw"><span class="dot" style="background:' + opts.barColorVar + '"></span>' + opts.seriesLabel + '</span>' +
-      '<span class="sw"><span class="dot" style="background:var(--text-primary)"></span>' + opts.targetLabel + '</span>' +
+      (opts.targetLabel ? '<span class="sw"><span class="dot" style="background:var(--text-primary)"></span>' + opts.targetLabel + '</span>' : '') +
       '</div>';
 
     var svg = '<div class="chart-wrap">' + legendHtml +
@@ -888,6 +888,161 @@
       barEl.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
     });
   }
+
+  function renderLineChart(container, opts) {
+    // opts: {categories, series:[{name,color,values}], formatValue}
+    chartUid++;
+    var W = 640, H = 240, padL = 8, padR = 8, padT = 14, padB = 26;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var n = opts.categories.length;
+
+    var allVals = [];
+    opts.series.forEach(function (s) { s.values.forEach(function (v) { if (isNum(v)) allVals.push(v); }); });
+    var maxV = allVals.length ? Math.max.apply(null, allVals) : 1;
+    var minV = allVals.length ? Math.min(0, Math.min.apply(null, allVals)) : 0;
+    maxV = maxV * 1.15 || 1;
+
+    function x(i) { return n <= 1 ? padL + plotW / 2 : padL + plotW * i / (n - 1); }
+    function y(v) { return padT + plotH - ((v - minV) / ((maxV - minV) || 1)) * plotH; }
+    var baseline = y(0);
+
+    var gridLines = 4, gridHtml = '', labelsHtml = '';
+    for (var g = 0; g <= gridLines; g++) {
+      var v = minV + (maxV - minV) * g / gridLines;
+      var yy = y(v);
+      gridHtml += '<line class="grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + yy + '" y2="' + yy + '"></line>';
+      labelsHtml += '<text class="axis-label" x="' + padL + '" y="' + (yy - 3) + '">' + opts.formatValue(v, true) + '</text>';
+    }
+    var xLabelsHtml = '';
+    opts.categories.forEach(function (cat, i) {
+      xLabelsHtml += '<text class="axis-label" x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + cat + '</text>';
+    });
+
+    var seriesHtml = '', legendHtml = '<div class="chart-legend">';
+    opts.series.forEach(function (s) {
+      var d = '', open = false;
+      s.values.forEach(function (v, i) {
+        if (!isNum(v)) { open = false; return; }
+        d += (open ? 'L' : 'M') + x(i) + ',' + y(v) + ' ';
+        open = true;
+      });
+      seriesHtml += '<path fill="none" stroke="' + s.color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="' + d.trim() + '"></path>';
+      s.values.forEach(function (v, i) {
+        if (!isNum(v)) return;
+        seriesHtml += '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="3.5" fill="' + s.color + '" stroke="var(--surface-1)" stroke-width="2"></circle>';
+      });
+      legendHtml += '<span class="sw"><span class="dot" style="background:' + s.color + '"></span>' + s.name + '</span>';
+    });
+    legendHtml += '</div>';
+
+    var tipId = 'tip' + chartUid;
+    var bandW = n > 1 ? plotW / (n - 1) : plotW;
+    var hitHtml = '';
+    opts.categories.forEach(function (cat, i) {
+      var hx = x(i);
+      hitHtml += '<rect class="hit-col" data-i="' + i + '" x="' + (hx - bandW / 2) + '" y="' + padT + '" width="' + bandW + '" height="' + plotH + '" fill="transparent"></rect>';
+    });
+
+    container.innerHTML = '<div class="chart-wrap">' + legendHtml +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
+      '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
+      gridHtml + labelsHtml + seriesHtml + xLabelsHtml + hitHtml +
+      '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
+
+    var tip = container.querySelector('#' + tipId);
+    var wrapEl = container.querySelector('.chart-wrap');
+    container.querySelectorAll('.hit-col').forEach(function (hit) {
+      var i = parseInt(hit.getAttribute('data-i'), 10);
+      hit.addEventListener('mousemove', function () {
+        var rect = wrapEl.getBoundingClientRect();
+        var scale = rect.width / W;
+        var firstVal = opts.series.map(function (s) { return s.values[i]; }).filter(isNum)[0];
+        var top = (isNum(firstVal) ? y(firstVal) : padT) * scale;
+        tip.style.left = (x(i) * scale) + 'px';
+        tip.style.top = top + 'px';
+        var html = '<strong>' + opts.categories[i] + '</strong>';
+        opts.series.forEach(function (s) {
+          var v = s.values[i];
+          html += '<br><span style="color:' + s.color + '">●</span> ' + s.name + ': ' + (isNum(v) ? opts.formatValue(v) : '-');
+        });
+        tip.innerHTML = html;
+        tip.style.opacity = 1;
+      });
+      hit.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+    });
+  }
+
+  function renderStackedBarChart(container, opts) {
+    // opts: {categories, series:[{name,color,values(fractions 0..1)}]}
+    chartUid++;
+    var W = 680, H = 260, padL = 8, padR = 8, padT = 10, padB = 26;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var n = opts.categories.length;
+    var bandW = plotW / n;
+    var barW = Math.max(10, Math.min(34, bandW * 0.6));
+    var gap = 2;
+
+    var gridLines = 4, gridHtml = '', labelsHtml = '';
+    for (var g = 0; g <= gridLines; g++) {
+      var frac = g / gridLines;
+      var yy = padT + plotH - frac * plotH;
+      gridHtml += '<line class="grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + yy + '" y2="' + yy + '"></line>';
+      labelsHtml += '<text class="axis-label" x="' + padL + '" y="' + (yy - 3) + '">' + Math.round(frac * 100) + '%</text>';
+    }
+
+    var barsHtml = '', xLabelsHtml = '';
+    var segs = [];
+    opts.categories.forEach(function (cat, i) {
+      var cx = padL + bandW * i + bandW / 2;
+      xLabelsHtml += '<text class="axis-label" x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle">' + cat + '</text>';
+      var total = 0;
+      opts.series.forEach(function (s) { total += (s.values[i] || 0); });
+      if (!total) return;
+      var yCursor = padT + plotH;
+      opts.series.forEach(function (s, si) {
+        var v = s.values[i] || 0;
+        if (v <= 0) return;
+        var segH = (v / total) * plotH;
+        var top = yCursor - segH;
+        var x0 = cx - barW / 2;
+        var hDraw = Math.max(0, segH - gap);
+        barsHtml += '<rect class="bar" x="' + x0 + '" y="' + top + '" width="' + barW + '" height="' + hDraw + '" rx="2" fill="' + s.color + '" data-i="' + i + '" data-s="' + si + '"></rect>';
+        segs.push({ i: i, si: si, cat: cat, name: s.name, v: v / total, cx: cx, top: top });
+        yCursor -= segH;
+      });
+    });
+
+    var legendHtml = '<div class="chart-legend">' + opts.series.map(function (s) {
+      return '<span class="sw"><span class="dot" style="background:' + s.color + '"></span>' + s.name + '</span>';
+    }).join('') + '</div>';
+
+    var tipId = 'tip' + chartUid;
+    container.innerHTML = '<div class="chart-wrap">' + legendHtml +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
+      '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + (padT + plotH) + '" y2="' + (padT + plotH) + '"></line>' +
+      gridHtml + labelsHtml + barsHtml + xLabelsHtml +
+      '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
+
+    var tip = container.querySelector('#' + tipId);
+    var wrapEl = container.querySelector('.chart-wrap');
+    container.querySelectorAll('.bar').forEach(function (barEl) {
+      var i = parseInt(barEl.getAttribute('data-i'), 10), si = parseInt(barEl.getAttribute('data-s'), 10);
+      var seg = segs.filter(function (s) { return s.i === i && s.si === si; })[0];
+      if (!seg) return;
+      barEl.addEventListener('mousemove', function () {
+        var rect = wrapEl.getBoundingClientRect();
+        var scale = rect.width / W;
+        tip.style.left = (seg.cx * scale) + 'px';
+        tip.style.top = (seg.top * scale) + 'px';
+        tip.style.opacity = 1;
+        tip.innerHTML = '<strong>' + seg.cat + '</strong><br>' + seg.name + ': ' + fmtPct(seg.v, 1);
+      });
+      barEl.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+    });
+  }
+
+  var SERIES_COLORS = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)',
+    'var(--series-5)', 'var(--series-6)', 'var(--series-7)', 'var(--series-8)'];
 
   /* =========================================================================
    * Table rendering helpers
@@ -933,23 +1088,35 @@
     return Math.round(v);
   }
 
+  var ICON_GAUGE = '<path d="M12 21a9 9 0 1 1 9-9"></path><line x1="12" y1="12" x2="16" y2="8"></line><circle cx="12" cy="12" r="1"></circle>';
+  var ICON_BOX = '<rect x="4" y="7" width="16" height="13" rx="1.5"></rect><path d="M4 7l8-4 8 4"></path><path d="M12 12v8"></path>';
+  var ICON_TRASH = '<path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"></path><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"></path>';
+  var ICON_GEAR = '<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>';
+  var ICON_LAYERS = '<path d="M12 2 2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path>';
+  var ICON_TARGET = '<circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1"></circle>';
+  var ICON_TREND = '<polyline points="3 17 9 11 13 15 21 7"></polyline><polyline points="14 7 21 7 21 14"></polyline>';
+
   function renderKPIs(kpi) {
     var tiles = [
-      { label: 'OEE Planta Global', value: fmtPct(kpi.oeePlantaGlobal, 1) },
-      { label: 'Kilos Fabricados', value: fmtInt(kpi.kilosFabricados) + ' kg' },
-      { label: 'Chatarra', value: fmtInt(kpi.chatarraKg) + ' kg' },
-      { label: 'Chatarra Máquinas', value: fmtPct(kpi.chatarraMaquinasPct, 2) },
-      { label: 'Chatarra Braner', value: fmtPct(kpi.chatarraBranerPct, 2) },
-      { label: 'Chatarra Planta', value: fmtPct(kpi.chatarraPlantaPct, 2) },
-      { label: 'Meta Chatarra', value: fmtPct(kpi.metaChatarra, 1) },
+      { label: 'OEE Planta Global', value: fmtPct(kpi.oeePlantaGlobal, 1), icon: ICON_GAUGE, accent: 'var(--series-5)' },
+      { label: 'Kilos Fabricados', value: fmtInt(kpi.kilosFabricados) + ' kg', icon: ICON_BOX, accent: 'var(--series-1)' },
+      { label: 'Chatarra', value: fmtInt(kpi.chatarraKg) + ' kg', icon: ICON_TRASH, accent: 'var(--series-6)' },
+      { label: 'Chatarra Máquinas', value: fmtPct(kpi.chatarraMaquinasPct, 2), icon: ICON_GEAR, accent: 'var(--series-8)' },
+      { label: 'Chatarra Braner', value: fmtPct(kpi.chatarraBranerPct, 2), icon: ICON_LAYERS, accent: 'var(--series-7)' },
+      { label: 'Chatarra Planta', value: fmtPct(kpi.chatarraPlantaPct, 2), icon: ICON_TARGET, accent: 'var(--series-2)' },
+      { label: 'Meta Chatarra', value: fmtPct(kpi.metaChatarra, 1), icon: ICON_TARGET, accent: 'var(--series-4)' },
       {
         label: 'Desviación', value: fmtSigned(kpi.desviacionChatarra, function (v) { return fmtPct(v, 2); }),
-        deltaClass: deltaClass(kpi.desviacionChatarra, true)
+        icon: ICON_TREND, accent: 'var(--series-3)',
+        deltaClass: deltaClass(kpi.desviacionChatarra, true),
+        deltaText: kpi.desviacionChatarra == null ? '' : (kpi.desviacionChatarra >= 0 ? 'sobre la meta' : 'bajo la meta')
       }
     ];
     el('kpiGrid').innerHTML = tiles.map(function (t) {
-      return '<div class="tile"><div class="label">' + t.label + '</div><div class="value">' + t.value + '</div>' +
-        (t.deltaClass ? '<div class="delta ' + t.deltaClass + '"></div>' : '') + '</div>';
+      return '<div class="tile" style="--accent:' + t.accent + '">' +
+        '<div class="tile-top"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + t.icon + '</svg></span></div>' +
+        '<div class="label">' + t.label + '</div><div class="value">' + t.value + '</div>' +
+        (t.deltaClass ? '<div class="delta ' + t.deltaClass + '">' + (t.deltaText || '') + '</div>' : '') + '</div>';
     }).join('');
   }
 
@@ -965,6 +1132,26 @@
     ];
     renderMonthlyTable(el('resumenTable'), 'Planta ' + anio, rows);
     return resumen;
+  }
+
+  function renderTendencias(anio, resumen) {
+    renderLineChart(el('chartProdTrend'), {
+      categories: resumen.map(function (m) { return m.mesAbbr; }),
+      series: [
+        { name: 'Estándar', color: 'var(--series-1)', values: resumen.map(function (m) { return m.prodEstandar; }) },
+        { name: 'Real', color: 'var(--series-3)', values: resumen.map(function (m) { return m.prodReal; }) }
+      ],
+      formatValue: fmtKgTick
+    });
+    var metaSerie = resumen.map(function (m) { return STATE.engine.oeeMetaVal('OEE Planta', m.mes); });
+    renderLineChart(el('chartOEETrend'), {
+      categories: resumen.map(function (m) { return m.mesAbbr; }),
+      series: [
+        { name: 'OEE real', color: 'var(--series-1)', values: resumen.map(function (m) { return m.oeeMensual; }) },
+        { name: 'Meta', color: 'var(--series-6)', values: metaSerie }
+      ],
+      formatValue: fmtPctTick
+    });
   }
 
   function renderPresupuesto(anio, resumen) {
@@ -1002,6 +1189,30 @@
   function renderDetalleMes(anio, mesNombre) {
     var det = STATE.engine.detalleMes(anio, mesNombre);
     var maquinas = det.columnas.map(function (c) { return c.maquina; });
+    ['mesLabel', 'mesLabel2', 'mesLabel3', 'mesLabel4'].forEach(function (id) { el(id).textContent = mesNombre; });
+
+    var maquinasCortas = maquinas.map(function (m) { return m.replace('Perfiladora', 'P').replace('Tubera', 'T'); });
+    renderBulletChart(el('chartMesProd'), {
+      categories: maquinasCortas,
+      values: det.columnas.map(function (c) { return c.prodEstandar; }),
+      targets: det.columnas.map(function () { return null; }),
+      formatValue: fmtKgTick, barColorVar: 'var(--series-1)',
+      seriesLabel: 'Producción estándar', targetLabel: ''
+    });
+    renderBulletChart(el('chartMesChatarra'), {
+      categories: maquinasCortas,
+      values: det.columnas.map(function (c) { return c.chatarraPct; }),
+      targets: det.columnas.map(function (c) { return c.metaChatarraEstandar; }),
+      formatValue: fmtPctTick, barColorVar: 'var(--series-6)',
+      seriesLabel: 'Chatarra', targetLabel: 'Meta'
+    });
+    renderBulletChart(el('chartMesOEE'), {
+      categories: maquinasCortas.filter(function (_, i) { return !det.columnas[i].isBraner; }),
+      values: det.columnas.filter(function (c) { return !c.isBraner; }).map(function (c) { return c.oee; }),
+      targets: det.columnas.filter(function (c) { return !c.isBraner; }).map(function (c) { return c.oeeMeta; }),
+      formatValue: fmtPctTick, barColorVar: 'var(--series-2)',
+      seriesLabel: 'OEE', targetLabel: 'Meta'
+    });
 
     renderMachineTable(el('detalleMesProd'), 'Producción & Chatarra — ' + mesNombre, maquinas, [
       { label: 'Producción Estándar', unit: 'kg', values: det.columnas.map(function (c) { return c.prodEstandar; }) },
@@ -1042,6 +1253,22 @@
 
   function renderDetalleAnio(anio, maquina) {
     var det = STATE.engine.detalleAnio(anio, maquina);
+    ['maqLabel', 'maqLabel2', 'maqLabel3'].forEach(function (id) { el(id).textContent = maquina; });
+
+    renderLineChart(el('chartAnioProd'), {
+      categories: det.meses.map(function (m) { return m.mesAbbr; }),
+      series: [{ name: 'Producción estándar', color: 'var(--series-1)', values: det.meses.map(function (m) { return m.prodEstandar; }) }],
+      formatValue: fmtKgTick
+    });
+    renderLineChart(el('chartAnioOEE'), {
+      categories: det.meses.map(function (m) { return m.mesAbbr; }),
+      series: [
+        { name: 'OEE real', color: 'var(--series-2)', values: det.meses.map(function (m) { return m.oee; }) },
+        { name: 'Meta', color: 'var(--series-6)', values: det.meses.map(function (m) { return m.oeeMeta; }) }
+      ],
+      formatValue: fmtPctTick
+    });
+
     renderMonthlyTable(el('detalleAnioProd'), 'Producción & Chatarra — ' + maquina, [
       { label: 'Producción Estándar', unit: 'kg', values: det.meses.map(function (m) { return m.prodEstandar; }) },
       { label: 'Metros Lineales', unit: 'm', values: det.meses.map(function (m) { return m.metrosLineales; }) },
@@ -1073,6 +1300,27 @@
 
   function renderEspesor(anio) {
     var esp = STATE.engine.espesorAnalysis(anio);
+
+    // cap the stacked chart at 8 categorical slots; fold the smallest into "Otros"
+    var totals = esp.pctTable.map(function (r) { return { espesor: r.espesor, total: sum(r.meses.filter(isNum)) }; });
+    totals.sort(function (a, b) { return b.total - a.total; });
+    var keep = totals.slice(0, 8).map(function (t) { return t.espesor; });
+    var chartSeries = [];
+    esp.pctTable.forEach(function (r, idx) {
+      if (keep.indexOf(r.espesor) === -1) return;
+      chartSeries.push({ name: r.espesor + ' mm', color: SERIES_COLORS[chartSeries.length % SERIES_COLORS.length], values: r.meses.map(function (v) { return v || 0; }) });
+    });
+    if (totals.length > 8) {
+      var otrosEsp = totals.slice(8).map(function (t) { return t.espesor; });
+      var otrosVals = MESES.map(function (_, i) {
+        var v = 0;
+        esp.pctTable.forEach(function (r) { if (otrosEsp.indexOf(r.espesor) >= 0 && isNum(r.meses[i])) v += r.meses[i]; });
+        return v;
+      });
+      chartSeries.push({ name: 'Otros', color: 'var(--text-muted)', values: otrosVals });
+    }
+    renderStackedBarChart(el('chartEspesorStack'), { categories: MESES_ABBR, series: chartSeries });
+
     var pctRows = esp.pctTable.map(function (r) { return { label: r.espesor + ' mm', values: r.meses, fmt: function (v) { return fmtPct(v, 1); } }; });
     pctRows.push({ label: 'Total', values: esp.totalPorMes.map(function (v) { return v ? 1 : null; }), fmt: function (v) { return fmtPct(v, 0); }, total: true });
     renderMonthlyTable(el('espesorPctTable'), 'Producción por Espesor (%) — ' + anio, pctRows);
@@ -1082,17 +1330,41 @@
     renderMonthlyTable(el('espesorKgTable'), 'Producción por Espesor (kg) — ' + anio, kgRows);
   }
 
-  function populateSelectors() {
-    var years = STATE.data.years;
-    el('yearSelect').innerHTML = years.map(function (y) { return '<option value="' + y + '">' + y + '</option>'; }).join('');
-    el('yearSelect').value = STATE.year;
+  function renderSegmented(containerId, options, activeValue, onPick) {
+    var container = el(containerId);
+    container.innerHTML = options.map(function (opt) {
+      var val = typeof opt === 'object' ? opt.value : opt;
+      var label = typeof opt === 'object' ? opt.label : opt;
+      var active = String(val) === String(activeValue);
+      return '<button type="button" class="seg-btn' + (active ? ' active' : '') + '" data-value="' + escapeHtml(val) + '">' + escapeHtml(label) + '</button>';
+    }).join('');
+    container.querySelectorAll('.seg-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        container.querySelectorAll('.seg-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        onPick(btn.getAttribute('data-value'));
+      });
+    });
+  }
 
-    el('monthSelect').innerHTML = MESES.map(function (m) { return '<option value="' + m + '">' + m + '</option>'; }).join('');
-    el('monthSelect').value = STATE.month;
+  function populateSelectors() {
+    renderSegmented('yearSeg', STATE.data.years, STATE.year, function (val) {
+      STATE.year = parseInt(val, 10);
+      STATE.month = pickDefaultMonth(STATE.year);
+      populateSelectors();
+      renderAll();
+    });
+
+    renderSegmented('monthSeg', MESES.map(function (m, i) { return { value: m, label: MESES_ABBR[i] }; }), STATE.month, function (val) {
+      STATE.month = val;
+      renderDetalleMes(STATE.year, STATE.month);
+    });
 
     var machines = STATE.data.machines;
-    el('machineSelect').innerHTML = machines.map(function (m) { return '<option value="' + escapeHtml(m) + '">' + escapeHtml(m) + '</option>'; }).join('');
-    el('machineSelect').value = STATE.machine;
+    renderSegmented('machineSeg', machines.map(function (m) { return { value: m, label: m.replace('Perfiladora', 'P.').replace('Tubera', 'T.') }; }), STATE.machine, function (val) {
+      STATE.machine = val;
+      renderDetalleAnio(STATE.year, STATE.machine);
+    });
   }
 
   function pickDefaultMonth(anio) {
@@ -1110,11 +1382,30 @@
     var resumen = renderResumen(anio);
     var kpi = STATE.engine.kpiHeader(anio, resumen);
     renderKPIs(kpi);
+    renderTendencias(anio, resumen);
     renderPresupuesto(anio, resumen);
     renderDetalleMes(anio, STATE.month);
     renderDetalleAnio(anio, STATE.machine);
     renderEspesor(anio);
-    el('updatedLabel').textContent = 'Año ' + anio + ' · generado ' + new Date().toLocaleString('es-CL');
+    el('updatedLabel').textContent = 'Año ' + anio + '\n' + new Date().toLocaleString('es-CL');
+  }
+
+  var TAB_META = {
+    resumen: { title: 'Resumen Ejecutivo', crumb: 'Planta · Año completo' },
+    maquina: { title: 'Detalle por Máquina', crumb: 'Producción, chatarra, costos y OEE por máquina' },
+    espesor: { title: 'Análisis por Espesor', crumb: 'Mix de producción por espesor' }
+  };
+
+  function switchTab(tab) {
+    document.querySelectorAll('.nav-item').forEach(function (btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
+    });
+    document.querySelectorAll('.tab-panel').forEach(function (panel) {
+      panel.classList.toggle('active', panel.id === 'tab-' + tab);
+    });
+    el('pageTitle').textContent = TAB_META[tab].title;
+    el('pageCrumb').textContent = TAB_META[tab].crumb;
+    el('sidebar').classList.remove('open');
   }
 
   function onFile(file) {
@@ -1130,8 +1421,7 @@
         STATE.machine = data.machines[0];
         populateSelectors();
         el('dzScreen').style.display = 'none';
-        el('dashboard').style.display = 'block';
-        el('topControls').style.display = 'flex';
+        el('appShell').style.display = 'flex';
         renderAll();
       } catch (err) {
         showError(err.message || String(err));
@@ -1163,26 +1453,15 @@
       if (f) onFile(f);
     });
     el('reloadBtn').addEventListener('click', function () {
-      el('dashboard').style.display = 'none';
-      el('topControls').style.display = 'none';
-      el('dzScreen').style.display = 'block';
+      el('appShell').style.display = 'none';
+      el('dzScreen').style.display = 'flex';
       el('dzError').style.display = 'none';
       input.value = '';
     });
-    el('yearSelect').addEventListener('change', function () {
-      STATE.year = parseInt(this.value, 10);
-      STATE.month = pickDefaultMonth(STATE.year);
-      populateSelectors();
-      renderAll();
+    document.querySelectorAll('.nav-item').forEach(function (btn) {
+      btn.addEventListener('click', function () { switchTab(btn.getAttribute('data-tab')); });
     });
-    el('monthSelect').addEventListener('change', function () {
-      STATE.month = this.value;
-      renderDetalleMes(STATE.year, STATE.month);
-    });
-    el('machineSelect').addEventListener('change', function () {
-      STATE.machine = this.value;
-      renderDetalleAnio(STATE.year, STATE.machine);
-    });
+    el('menuBtn').addEventListener('click', function () { el('sidebar').classList.toggle('open'); });
   }
 
   document.addEventListener('DOMContentLoaded', wireEvents);
