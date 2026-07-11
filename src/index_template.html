@@ -278,6 +278,11 @@ svg.chart{width:100%;height:auto;overflow:visible;}
 .baseline{stroke:var(--baseline);stroke-width:1;}
 .value-label{font-size:10px;font-weight:700;font-variant-numeric:tabular-nums;opacity:.85;paint-order:stroke;stroke:var(--surface-1);stroke-width:3px;transition:opacity .1s;}
 .rank-label{font-size:11px;fill:var(--text-secondary);font-weight:600;}
+.bubble{transition:opacity .1s;cursor:pointer;}
+.bubble:hover{opacity:.8;}
+.bubble-center-label{font-size:9.5px;font-weight:700;fill:var(--text-primary);pointer-events:none;font-variant-numeric:tabular-nums;}
+.bubble-name-label{font-size:9px;font-weight:600;opacity:.85;paint-order:stroke;stroke:var(--surface-1);stroke-width:3px;transition:opacity .1s;pointer-events:none;}
+.bubble-name-label.value-label-active{opacity:1;}
 .value-label-active{opacity:1;}
 .bar-active{filter:brightness(1.08);}
 .pt{transition:r .1s;cursor:pointer;}
