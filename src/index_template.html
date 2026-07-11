@@ -575,14 +575,21 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
         <div class="section-title"><span>Tendencias — Planta</span><span class="line"></span></div>
         <div class="grid-2">
           <div class="card">
-            <h3>Producción: estándar vs. real</h3>
-            <div class="cap">kg por mes</div>
+            <h3>Costo por kilo: real vs. meta</h3>
+            <div class="cap">$/kg planta por mes, con desviación (meta − real)</div>
             <div id="chartProdTrend"></div>
           </div>
           <div class="card">
             <h3>OEE Planta mensual</h3>
-            <div class="cap">% vs. meta calculada</div>
+            <div class="cap">% vs. meta, con desviación</div>
             <div id="chartOEETrend"></div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Calidad planta mensual</h3>
+            <div class="cap">% promedio de las máquinas (componente Calidad del OEE)</div>
+            <div id="chartCalidadTrend"></div>
           </div>
         </div>
       </div>

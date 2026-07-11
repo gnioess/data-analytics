@@ -575,14 +575,21 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
         <div class="section-title"><span>Tendencias — Planta</span><span class="line"></span></div>
         <div class="grid-2">
           <div class="card">
-            <h3>Producción: estándar vs. real</h3>
-            <div class="cap">kg por mes</div>
+            <h3>Costo por kilo: real vs. meta</h3>
+            <div class="cap">$/kg planta por mes, con desviación (meta − real)</div>
             <div id="chartProdTrend"></div>
           </div>
           <div class="card">
             <h3>OEE Planta mensual</h3>
-            <div class="cap">% vs. meta calculada</div>
+            <div class="cap">% vs. meta, con desviación</div>
             <div id="chartOEETrend"></div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Calidad planta mensual</h3>
+            <div class="cap">% promedio de las máquinas (componente Calidad del OEE)</div>
+            <div id="chartCalidadTrend"></div>
           </div>
         </div>
       </div>
@@ -1915,7 +1922,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
         return {
           mes: mesNombre, mesAbbr: MESES_ABBR[i],
-          prodEstandar: prodEst, metrosLineales: ml, factor: factor, unidades: unidades,
+          prodEstandar: prodEst, pptoProduccion: pptoProdVal(maquina, mesNombre),
+          metrosLineales: ml, factor: factor, unidades: unidades,
           chatarra: chat, chatarraPct: chatPct, metaChatarraEstandar: metaChatEst, desviacionChatarraEstandar: desvChatEst,
           valorVales: valorVales, costoPorMetro: costoPorM, costoPorKilo: costoPorKg, metaPresupuesto: metaPresupKg, desviacionCosto: desvCosto,
           disponibilidad: disp, calidad: cal, ritmo: ritmo, oee: oeeM, oeeMeta: oeeMeta, desviacionOEE: desvOEE,
@@ -2097,6 +2105,21 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         total: { kg: totalKg, proy: totalProy, ppto: totalPpto, desvPct: totalDesv,
                  estado: totalDesv == null ? 'sindato' : (totalDesv >= 0 ? 'ok' : 'alerta') }
       };
+    }
+
+    /* ---- Tendencias de planta: costo/kg vs. meta y calidad promedio, por mes ---- */
+    function tendenciasPlanta(anio) {
+      return MESES.map(function (mesNombre, i) {
+        var det = detalleMes(anio, mesNombre);
+        var calidades = det.columnas.filter(function (c) { return !c.isBraner && isNum(c.calidad); })
+          .map(function (c) { return c.calidad; });
+        return {
+          mes: mesNombre, mesAbbr: MESES_ABBR[i],
+          costoKg: det.costoPlanta, costoMeta: det.metaPlanta,
+          costoDesv: (det.costoPlanta != null && det.metaPlanta != null) ? det.metaPlanta - det.costoPlanta : null,
+          calidad: calidades.length ? sum(calidades) / calidades.length : null
+        };
+      });
     }
 
     /* ---- Puntos críticos: TODAS las desviaciones vs. meta en un solo lugar ----
@@ -2358,6 +2381,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       torreControl: torreControl, aporteOEEPorMaquina: aporteOEEPorMaquina, productMix: productMix,
       produccionMensualPorMaquina: produccionMensualPorMaquina, costosCategoria: costosCategoria,
       proyeccionCierre: proyeccionCierre, paretoChatarra: paretoChatarra, paretoProduccion: paretoProduccion,
+      tendenciasPlanta: tendenciasPlanta,
       puntosCriticos: puntosCriticos, insumosPxQ: insumosPxQ,
       espesorKgFiltrado: espesorKgFiltrado, espesoresDisponibles: espesoresDisponibles,
       skuBuscador: skuBuscador, skuMonthlyTrend: skuMonthlyTrend, skuArticleMonthlyTrend: skuArticleMonthlyTrend
@@ -2603,8 +2627,13 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         var x0 = cx - barW / 2;
         var hDraw = Math.max(0, segH - gap);
         barsHtml += '<rect class="bar" x="' + x0 + '" y="' + top + '" width="' + barW + '" height="' + hDraw + '" rx="2" fill="' + s.color + '" data-i="' + i + '" data-s="' + si + '"></rect>';
-        if (hDraw >= 15) {
-          stackLabelsHtml += '<text class="stack-label" x="' + cx + '" y="' + (top + hDraw / 2 + 3.5) + '" text-anchor="middle">' + fmtPct(v / total, 0) + '</text>';
+        // name the series INSIDE the segment — matching colors across 8 thicknesses
+        // is hard, so tall segments carry "3mm 45%" and medium ones just "3mm"
+        if (hDraw >= 26) {
+          stackLabelsHtml += '<text class="stack-label" x="' + cx + '" y="' + (top + hDraw / 2 - 3) + '" text-anchor="middle">' + escapeHtml(s.name.replace(' mm', 'mm')) + '</text>' +
+            '<text class="stack-label" x="' + cx + '" y="' + (top + hDraw / 2 + 9) + '" text-anchor="middle">' + fmtPct(v / total, 0) + '</text>';
+        } else if (hDraw >= 13) {
+          stackLabelsHtml += '<text class="stack-label" x="' + cx + '" y="' + (top + hDraw / 2 + 3.5) + '" text-anchor="middle">' + escapeHtml(s.name.replace(' mm', 'mm')) + '</text>';
         }
         segs.push({ i: i, si: si, cat: cat, name: s.name, v: v / total, cx: cx, top: top });
         yCursor -= segH;
@@ -3066,6 +3095,100 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     return { hiddenLabels: items.filter(function (it) { return it.hideLabel; }).length };
   }
 
+  function renderComboChart(container, opts) {
+    // opts: {categories, barName, barColor, barValues, metaName, metaValues,
+    //        desvName, desvValues, formatValue}
+    // The requested "todo en uno": the real value as bars, its meta/budget as a
+    // line, and the deviation as a line WITH points — all three share one axis
+    // (same unit), which is what makes the overlay legitimate. The axis extends
+    // below zero when deviations go negative.
+    chartUid++;
+    var W = 720, H = 280, padL = 10, padR = 12, padT = 20, padB = 26;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var n = opts.categories.length;
+    var bandW = plotW / n;
+    var barW = Math.max(8, Math.min(30, bandW * 0.52));
+
+    var all = [].concat(opts.barValues, opts.metaValues, opts.desvValues).filter(isNum);
+    var maxV = all.length ? Math.max.apply(null, all) : 1;
+    var minV = all.length ? Math.min(0, Math.min.apply(null, all)) : 0;
+    maxV = maxV * 1.18 || 1;
+    if (minV < 0) minV = minV * 1.15;
+
+    function y(v) { return padT + plotH - ((v - minV) / (maxV - minV)) * plotH; }
+    var baseline = y(0);
+
+    var gridHtml = '', labelsHtml = '';
+    for (var g = 0; g <= 4; g++) {
+      var v = minV + (maxV - minV) * g / 4;
+      var yy = y(v);
+      gridHtml += '<line class="grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + yy + '" y2="' + yy + '"></line>';
+      labelsHtml += '<text class="axis-label" x="' + padL + '" y="' + (yy - 3) + '">' + opts.formatValue(v, true) + '</text>';
+    }
+
+    function cxOf(i) { return padL + bandW * i + bandW / 2; }
+    var barsHtml = '', xLabelsHtml = '', valueLabelsHtml = '';
+    var pts = [];
+    opts.categories.forEach(function (cat, i) {
+      var cx = cxOf(i);
+      xLabelsHtml += '<text class="axis-label" x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle">' + cat + '</text>';
+      var val = opts.barValues[i];
+      if (isNum(val)) {
+        var top = Math.min(baseline, y(val)), h = Math.max(1, Math.abs(y(val) - baseline));
+        barsHtml += '<rect class="bar" data-i="' + i + '" x="' + (cx - barW / 2) + '" y="' + top + '" width="' + barW + '" height="' + h + '" rx="3" fill="' + opts.barColor + '"></rect>';
+        valueLabelsHtml += '<text class="value-label" x="' + cx + '" y="' + (top - 5) + '" text-anchor="middle">' + opts.formatValue(val) + '</text>';
+      }
+      pts.push({ i: i, cx: cx, cat: cat, val: val, meta: opts.metaValues[i], desv: opts.desvValues[i] });
+    });
+
+    function linePath(values) {
+      var d = '', started = false;
+      values.forEach(function (v, i) {
+        if (!isNum(v)) { started = false; return; }
+        d += (started ? 'L' : 'M') + cxOf(i) + ',' + y(v);
+        started = true;
+      });
+      return d;
+    }
+    var metaHtml = '<path d="' + linePath(opts.metaValues) + '" fill="none" stroke="var(--text-primary)" stroke-width="1.8" stroke-dasharray="5 3" opacity=".8"></path>';
+    var desvHtml = '<path d="' + linePath(opts.desvValues) + '" fill="none" stroke="var(--series-8)" stroke-width="2"></path>';
+    opts.desvValues.forEach(function (v, i) {
+      if (!isNum(v)) return;
+      desvHtml += '<circle class="bar" data-i="' + i + '" cx="' + cxOf(i) + '" cy="' + y(v) + '" r="3.6" fill="var(--series-8)" stroke="var(--surface-1)" stroke-width="1.5"></circle>';
+    });
+
+    var legendHtml = '<div class="chart-legend">' +
+      '<span class="sw"><span class="dot" style="background:' + opts.barColor + '"></span>' + escapeHtml(opts.barName) + '</span>' +
+      '<span class="sw"><span class="dot" style="background:var(--text-primary)"></span>' + escapeHtml(opts.metaName) + '</span>' +
+      '<span class="sw"><span class="dot" style="background:var(--series-8)"></span>' + escapeHtml(opts.desvName) + '</span></div>';
+
+    var tipId = 'tip' + chartUid;
+    container.innerHTML = '<div class="chart-wrap">' + legendHtml +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
+      '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
+      gridHtml + labelsHtml + barsHtml + metaHtml + desvHtml + valueLabelsHtml + xLabelsHtml +
+      '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
+
+    var tip = container.querySelector('#' + tipId);
+    var wrapEl = container.querySelector('.chart-wrap');
+    container.querySelectorAll('.bar').forEach(function (elm) {
+      var p = pts[parseInt(elm.getAttribute('data-i'), 10)];
+      if (!p) return;
+      elm.addEventListener('mousemove', function () {
+        var rect = wrapEl.getBoundingClientRect();
+        var scale = rect.width / W;
+        tip.style.left = (p.cx * scale) + 'px';
+        tip.style.top = ((padT + 6) * scale) + 'px';
+        tip.style.opacity = 1;
+        tip.innerHTML = '<strong>' + p.cat + '</strong>' +
+          (isNum(p.val) ? '<br>' + escapeHtml(opts.barName) + ': ' + opts.formatValue(p.val) : '') +
+          (isNum(p.meta) ? '<br>' + escapeHtml(opts.metaName) + ': ' + opts.formatValue(p.meta) : '') +
+          (isNum(p.desv) ? '<br>' + escapeHtml(opts.desvName) + ': ' + opts.formatValue(p.desv) : '');
+      });
+      elm.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+    });
+  }
+
   function renderDeviationChart(container, opts) {
     // opts: {categories, values, formatValue, seriesLabel, goodIsPositive}
     chartUid++;
@@ -3266,21 +3389,32 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   }
 
   function renderTendencias(anio, resumen) {
-    renderLineChart(el('chartProdTrend'), {
-      categories: resumen.map(function (m) { return m.mesAbbr; }),
-      series: [
-        { name: 'Estándar', color: 'var(--series-1)', values: resumen.map(function (m) { return m.prodEstandar; }) },
-        { name: 'Real', color: 'var(--series-3)', values: resumen.map(function (m) { return m.prodReal; }) }
-      ],
-      formatValue: fmtKgTick
+    var tend = STATE.engine.tendenciasPlanta(anio);
+    renderComboChart(el('chartProdTrend'), {
+      categories: tend.map(function (m) { return m.mesAbbr; }),
+      barName: 'Costo/kg real', barColor: 'var(--series-1)',
+      barValues: tend.map(function (m) { return m.costoKg; }),
+      metaName: 'Meta presupuesto', metaValues: tend.map(function (m) { return m.costoMeta; }),
+      desvName: 'Desviación (meta − real)', desvValues: tend.map(function (m) { return m.costoDesv; }),
+      formatValue: fmtMoneyTick
     });
+
     var metaSerie = resumen.map(function (m) { return STATE.engine.oeeMetaVal('OEE Planta', m.mes); });
-    renderLineChart(el('chartOEETrend'), {
+    renderComboChart(el('chartOEETrend'), {
       categories: resumen.map(function (m) { return m.mesAbbr; }),
-      series: [
-        { name: 'OEE real', color: 'var(--series-1)', values: resumen.map(function (m) { return m.oeeMensual; }) },
-        { name: 'Meta', color: 'var(--series-6)', values: metaSerie }
-      ],
+      barName: 'OEE real', barColor: 'var(--series-2)',
+      barValues: resumen.map(function (m) { return m.oeeMensual; }),
+      metaName: 'Meta', metaValues: metaSerie,
+      desvName: 'Desviación (real − meta)',
+      desvValues: resumen.map(function (m, i) {
+        return (isNum(m.oeeMensual) && isNum(metaSerie[i])) ? m.oeeMensual - metaSerie[i] : null;
+      }),
+      formatValue: fmtPctTick
+    });
+
+    renderLineChart(el('chartCalidadTrend'), {
+      categories: tend.map(function (m) { return m.mesAbbr; }),
+      series: [{ name: 'Calidad promedio máquinas', color: 'var(--series-5)', values: tend.map(function (m) { return zeroToNull(m.calidad); }) }],
       formatValue: fmtPctTick
     });
   }
@@ -3288,20 +3422,22 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   function renderPresupuesto(anio, resumen) {
     var ppto = STATE.engine.presupuesto(anio, resumen);
 
-    renderBulletChart(el('chartProdPpto'), {
+    renderComboChart(el('chartProdPpto'), {
       categories: ppto.produccion.map(function (m) { return m.mesAbbr; }),
-      values: ppto.produccion.map(function (m) { return m.real; }),
-      targets: ppto.produccion.map(function (m) { return m.ppto; }),
-      formatValue: fmtKgTick, barColorVar: 'var(--series-1)',
-      seriesLabel: 'Producción real', targetLabel: 'Presupuesto'
+      barName: 'Producción real', barColor: 'var(--series-1)',
+      barValues: ppto.produccion.map(function (m) { return m.real; }),
+      metaName: 'Presupuesto', metaValues: ppto.produccion.map(function (m) { return m.ppto; }),
+      desvName: 'Desviación', desvValues: ppto.produccion.map(function (m) { return m.desv; }),
+      formatValue: fmtKgTick
     });
 
-    renderBulletChart(el('chartChatPpto'), {
+    renderComboChart(el('chartChatPpto'), {
       categories: ppto.chatarra.map(function (m) { return m.mesAbbr; }),
-      values: ppto.chatarra.map(function (m) { return m.pct; }),
-      targets: ppto.chatarra.map(function (m) { return m.meta; }),
-      formatValue: fmtPctTick, barColorVar: 'var(--series-6)',
-      seriesLabel: 'Chatarra planta', targetLabel: 'Meta (4,6%)'
+      barName: 'Chatarra planta', barColor: 'var(--series-6)',
+      barValues: ppto.chatarra.map(function (m) { return m.pct; }),
+      metaName: 'Meta (4,6%)', metaValues: ppto.chatarra.map(function (m) { return m.meta; }),
+      desvName: 'Desviación (meta − real)', desvValues: ppto.chatarra.map(function (m) { return m.desv; }),
+      formatValue: fmtPctTick
     });
 
     renderDeviationChart(el('chartDesvProd'), {
@@ -3418,17 +3554,23 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var det = STATE.engine.detalleAnio(anio, maquina);
     ['maqLabel', 'maqLabel2', 'maqLabel3'].forEach(function (id) { el(id).textContent = maquina; });
 
-    renderLineChart(el('chartAnioProd'), {
+    renderComboChart(el('chartAnioProd'), {
       categories: det.meses.map(function (m) { return m.mesAbbr; }),
-      series: [{ name: 'Producción estándar', color: 'var(--series-1)', values: det.meses.map(function (m) { return m.prodEstandar; }) }],
+      barName: 'Producción estándar', barColor: 'var(--series-1)',
+      barValues: det.meses.map(function (m) { return m.prodEstandar; }),
+      metaName: 'Presupuesto', metaValues: det.meses.map(function (m) { return m.pptoProduccion; }),
+      desvName: 'Desviación',
+      desvValues: det.meses.map(function (m) {
+        return (isNum(m.prodEstandar) && isNum(m.pptoProduccion)) ? m.prodEstandar - m.pptoProduccion : null;
+      }),
       formatValue: fmtKgTick
     });
-    renderLineChart(el('chartAnioOEE'), {
+    renderComboChart(el('chartAnioOEE'), {
       categories: det.meses.map(function (m) { return m.mesAbbr; }),
-      series: [
-        { name: 'OEE real', color: 'var(--series-2)', values: det.meses.map(function (m) { return m.oee; }) },
-        { name: 'Meta', color: 'var(--series-6)', values: det.meses.map(function (m) { return m.oeeMeta; }) }
-      ],
+      barName: 'OEE real', barColor: 'var(--series-2)',
+      barValues: det.meses.map(function (m) { return m.oee; }),
+      metaName: 'Meta', metaValues: det.meses.map(function (m) { return m.oeeMeta; }),
+      desvName: 'Desviación', desvValues: det.meses.map(function (m) { return m.desviacionOEE; }),
       formatValue: fmtPctTick
     });
 
@@ -3625,15 +3767,30 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var cls = estado === 'ok' ? 'good' : (estado === 'alerta' ? 'bad' : '');
       return '<span class="pill' + (cls ? ' ' + cls : ' pill-muted') + '">' + PILL_LABEL[estado] + '</span>';
     }
-    var html = '<table class="wide"><thead><tr><th>Máquina</th><th>Chatarra</th><th>Estado</th><th>OEE</th><th>Estado</th><th>Costo/kg</th><th>Estado</th></tr></thead><tbody>';
+    // desviaciones firmadas de modo que POSITIVO = a favor de la meta en todos los
+    // indicadores (chatarra/costo: meta − real; OEE: real − meta), y rojo cuando negativo
+    function desvTd(real, meta, badWhenHigher, fmt) {
+      if (real == null || meta == null) return '<td class="dash">-</td>';
+      var d = badWhenHigher ? meta - real : real - meta;
+      return '<td class="' + (d < 0 ? 'neg' : 'pos') + '">' + fmtSigned(d, fmt) + '</td>';
+    }
+    var pct2 = function (v) { return fmtPct(v, 2); };
+    var pct1 = function (v) { return fmtPct(v, 1); };
+    var html = '<table class="wide"><thead><tr><th>Máquina</th>' +
+      '<th>Chatarra</th><th>Meta</th><th>Desv.</th><th>Estado</th>' +
+      '<th>OEE</th><th>Meta</th><th>Desv.</th><th>Estado</th>' +
+      '<th>Costo/kg</th><th>Meta</th><th>Desv.</th><th>Estado</th></tr></thead><tbody>';
     rows.forEach(function (r) {
       html += '<tr>' +
         '<td>' + escapeHtml(machineShortLabel(r.maquina, STATE.data.machineCodes)) + ' <span class="subtle">' + escapeHtml(r.maquina) + '</span></td>' +
-        tdv(r.chatarraPct, function (v) { return fmtPct(v, 2); }) +
+        tdv(r.chatarraPct, pct2) + tdv(r.metaChatarraEstandar, pct2) +
+        desvTd(r.chatarraPct, r.metaChatarraEstandar, true, pct2) +
         '<td>' + pill(r.chatarraEstado) + '</td>' +
-        tdv(r.oee, function (v) { return fmtPct(v, 1); }) +
+        tdv(r.oee, pct1) + tdv(r.oeeMeta, pct1) +
+        desvTd(r.oee, r.oeeMeta, false, pct1) +
         '<td>' + pill(r.oeeEstado) + '</td>' +
-        tdv(r.costoPorKilo, fmtMoney) +
+        tdv(r.costoPorKilo, fmtMoney) + tdv(r.metaPresupuesto, fmtMoney) +
+        desvTd(r.costoPorKilo, r.metaPresupuesto, true, fmtMoney) +
         '<td>' + pill(r.costoEstado) + '</td>' +
         '</tr>';
     });
@@ -3796,12 +3953,13 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   // comparing the annual monthly average to the current month.
   function renderCostosCategoria(categoria, chartId, capId, maquina, maquinaTxt) {
     var data = STATE.engine.costosCategoria(STATE.year, categoria, { maquina: maquina });
-    renderGroupedBarChart(el(chartId), {
+    renderComboChart(el(chartId), {
       categories: MESES_ABBR,
-      series: [
-        { name: 'Real', color: 'var(--series-1)', values: data.months.map(function (m) { return m.real; }) },
-        { name: 'Presupuesto', color: 'var(--text-muted)', values: data.months.map(function (m) { return m.ppto; }) }
-      ],
+      barName: 'Real', barColor: 'var(--series-1)',
+      barValues: data.months.map(function (m) { return m.real; }),
+      metaName: 'Presupuesto', metaValues: data.months.map(function (m) { return m.ppto; }),
+      desvName: 'Desviación (ppto − real)',
+      desvValues: data.months.map(function (m) { return (m.real != null && m.ppto != null) ? m.ppto - m.real : null; }),
       formatValue: fmtMoneyTick
     });
     var mesRef = STATE.insumos.mes || STATE.month;
