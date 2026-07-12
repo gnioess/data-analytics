@@ -11,6 +11,8 @@ try {
   if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
 } catch (e) { }
 </script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
 <style>
 :root{
   color-scheme: light dark;
@@ -172,6 +174,10 @@ button{font-family:inherit;}
 .sidebar-foot .btn-reload:hover{background:var(--sb-active-bg);color:#fff;}
 .sidebar-foot .btn-reload:hover svg{animation:spinOnce .5s var(--ease-out);}
 .sidebar-foot .btn-reload:active{transform:scale(.97);}
+.sidebar-foot .btn-reload:disabled{opacity:.6;cursor:default;}
+.sidebar-foot .btn-reload + .btn-reload{margin-top:8px;}
+#driveRefreshHint{font-size:11px;margin-top:8px;color:var(--sb-text-dim);min-height:14px;white-space:pre-line;}
+#driveRefreshHint.err{color:var(--critical);}
 @keyframes spinOnce{from{transform:rotate(-180deg);}to{transform:none;}}
 
 /* ---------- Main ---------- */
@@ -252,6 +258,17 @@ button{font-family:inherit;}
 #dropzone .hint{color:var(--text-muted);font-size:12px;margin-top:10px;}
 #fileInput{display:none;}
 #dzError{color:var(--critical);font-size:13px;margin-top:12px;display:none;white-space:pre-line;}
+#dzDriveRow{margin-top:18px;text-align:center;}
+#dzDriveRow .dz-or{display:block;color:var(--text-muted);font-size:12px;margin-bottom:12px;}
+.btn-drive{
+  display:inline-flex;align-items:center;gap:9px;padding:10px 18px;border-radius:10px;
+  border:1px solid var(--border);background:var(--surface-2);color:var(--text-primary);
+  font-size:13px;font-weight:600;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s var(--ease-out);
+}
+.btn-drive:hover{border-color:color-mix(in srgb, var(--series-1) 45%, var(--border));box-shadow:var(--card-shadow-hover);transform:translateY(-1px);}
+.btn-drive:disabled{opacity:.6;cursor:default;transform:none;}
+#dzDriveHint{color:var(--text-muted);font-size:12px;margin-top:10px;min-height:16px;}
+#dzDriveHint.err{color:var(--critical);}
 
 /* ---------- App (hidden until file loaded) ---------- */
 .app-shell{display:none;}
@@ -476,6 +493,14 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
       <input type="file" id="fileInput" accept=".xlsx,.xls">
       <div id="dzError"></div>
     </div>
+    <div id="dzDriveRow">
+      <span class="dz-or">o</span>
+      <button type="button" id="driveConnectBtn" class="btn-drive">
+        <svg width="16" height="16" viewBox="0 0 87.3 78" aria-hidden="true"><path fill="#0066da" d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"></path><path fill="#00ac47" d="M43.65 25l-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.5z"></path><path fill="#ea4335" d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z"></path><path fill="#00832d" d="M43.65 25l13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"></path><path fill="#2684fc" d="M59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"></path><path fill="#ffba00" d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z"></path></svg>
+        Conectar con Google Drive
+      </button>
+      <div class="dz-drive-hint" id="dzDriveHint"></div>
+    </div>
   </div>
 </div>
 
@@ -523,6 +548,11 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
     </nav>
     <div class="sidebar-foot">
       <div class="updated" id="updatedLabel"></div>
+      <button class="btn-reload" id="driveRefreshBtn" style="display:none;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
+        <span id="driveRefreshLabel">Actualizar desde Drive</span>
+      </button>
+      <div id="driveRefreshHint"></div>
       <button class="btn-reload" id="reloadBtn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
         Cargar otro Excel

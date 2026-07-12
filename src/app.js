@@ -3751,6 +3751,151 @@
     });
   }
 
+  /* ---- Integración opcional con Google Drive: login del usuario (OAuth) + Google Picker
+   * para elegir el Excel/Sheet, y Drive API para leer sus bytes. Requiere que la página se
+   * sirva por https:// (no funciona abriendo el archivo local) y que el Client ID esté
+   * autorizado para ese origen en Google Cloud Console. El token de acceso vive solo en
+   * memoria (nunca se guarda) — cada carga de página vuelve a pedir permiso, silenciosamente
+   * si la sesión de Google sigue activa. Solo se persiste el ID del archivo elegido, para que
+   * "Actualizar desde Drive" no tenga que reabrir el selector cada vez. ---- */
+  var DRIVE_CLIENT_ID = '996470318055-bratn6iehc54js1rlpn9bnvp3037t37k.apps.googleusercontent.com';
+  var DRIVE_API_KEY = 'AIzaSyBt1q8xioWVrFMRUedP45jEpMDX5gWJXdw';
+  var DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+  var LS_DRIVE_FILE = 'erpAnalyticsDriveFile';
+  var driveTokenClient = null, driveAccessToken = null, drivePickerLoaded = false;
+
+  function driveSavedFile() {
+    try { return JSON.parse(localStorage.getItem(LS_DRIVE_FILE) || 'null'); } catch (e) { return null; }
+  }
+  function driveSaveFile(rec) {
+    try { localStorage.setItem(LS_DRIVE_FILE, JSON.stringify(rec)); } catch (e) { }
+  }
+  function driveHint(msg, isErr, ctx) {
+    var box = el(ctx === 'side' ? 'driveRefreshHint' : 'dzDriveHint');
+    if (!box) return;
+    box.textContent = msg || '';
+    box.classList.toggle('err', !!isErr);
+  }
+  function driveSetBusy(busy) {
+    var btn = el('driveConnectBtn'); if (btn) btn.disabled = busy;
+    var rbtn = el('driveRefreshBtn'); if (rbtn) rbtn.disabled = busy;
+  }
+
+  function driveEnsureToken(promptMode, onReady, onError) {
+    if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+      onError('No se pudo cargar el inicio de sesión de Google. Revisa tu conexión e intenta de nuevo.');
+      return;
+    }
+    if (!driveTokenClient) {
+      driveTokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: DRIVE_CLIENT_ID,
+        scope: DRIVE_SCOPE,
+        callback: function () { }
+      });
+    }
+    driveTokenClient.callback = function (resp) {
+      if (resp && resp.access_token) { driveAccessToken = resp.access_token; onReady(); }
+      else onError('No se concedió acceso a Google Drive.');
+    };
+    driveTokenClient.error_callback = function (err) {
+      onError((err && err.message) || 'No se pudo iniciar sesión con Google.');
+    };
+    driveTokenClient.requestAccessToken({ prompt: promptMode || '' });
+  }
+
+  function driveEnsurePicker(cb, onError) {
+    if (drivePickerLoaded) { cb(); return; }
+    if (typeof gapi === 'undefined') {
+      onError('No se pudo cargar el selector de archivos de Google. Revisa tu conexión e intenta de nuevo.');
+      return;
+    }
+    gapi.load('picker', function () { drivePickerLoaded = true; cb(); });
+  }
+
+  function driveOpenPicker() {
+    driveHint('Conectando con Google…', false, 'dz');
+    driveSetBusy(true);
+    driveEnsureToken('', function () {
+      driveEnsurePicker(function () {
+        driveHint('', false, 'dz');
+        driveSetBusy(false);
+        var view = new google.picker.DocsView(google.picker.ViewId.DOCS)
+          .setMimeTypes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.google-apps.spreadsheet')
+          .setSelectFolderEnabled(false);
+        var picker = new google.picker.PickerBuilder()
+          .addView(view)
+          .setOAuthToken(driveAccessToken)
+          .setDeveloperKey(DRIVE_API_KEY)
+          .setCallback(driveOnPicked)
+          .build();
+        picker.setVisible(true);
+      }, function (msg) { driveSetBusy(false); driveHint(msg, true, 'dz'); });
+    }, function (msg) { driveSetBusy(false); driveHint(msg, true, 'dz'); });
+  }
+
+  function driveOnPicked(data) {
+    if (data.action !== google.picker.Action.PICKED) return;
+    var doc = data.docs[0];
+    driveDownloadFile(doc.id, doc.name, doc.mimeType, 'dz');
+  }
+
+  function driveDownloadFile(fileId, name, mimeType, ctx) {
+    driveHint('Descargando "' + name + '" desde Drive…', false, ctx);
+    driveSetBusy(true);
+    var isGoogleSheet = mimeType === 'application/vnd.google-apps.spreadsheet';
+    var url = isGoogleSheet
+      ? 'https://www.googleapis.com/drive/v3/files/' + fileId + '/export?mimeType=application%2Fvnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      : 'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media';
+    fetch(url, { headers: { Authorization: 'Bearer ' + driveAccessToken } })
+      .then(function (res) {
+        if (!res.ok) throw new Error('Google Drive respondió ' + res.status + '.');
+        return res.arrayBuffer();
+      })
+      .then(function (buf) {
+        initFromBuffer(buf, { name: name, ts: Date.now() });
+        idbPut('last', { buffer: buf, name: name, ts: Date.now() }).catch(function () { });
+        driveSaveFile({ id: fileId, name: name, mimeType: mimeType });
+        driveUpdateRefreshUi();
+        driveHint('', false, ctx);
+        driveSetBusy(false);
+      })
+      .catch(function (err) {
+        driveSetBusy(false);
+        driveHint('No se pudo leer el archivo desde Drive: ' + (err.message || err), true, ctx);
+        if (ctx === 'dz') showError('No se pudo leer el archivo desde Google Drive.');
+      });
+  }
+
+  function driveUpdateRefreshUi() {
+    var saved = driveSavedFile();
+    var btn = el('driveRefreshBtn');
+    if (!btn) return;
+    if (saved) {
+      btn.style.display = '';
+      btn.title = saved.name;
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+
+  function driveRefresh() {
+    var saved = driveSavedFile();
+    if (!saved) return;
+    driveHint('Conectando con Google…', false, 'side');
+    driveSetBusy(true);
+    driveEnsureToken('', function () {
+      driveDownloadFile(saved.id, saved.name, saved.mimeType, 'side');
+    }, function (msg) { driveSetBusy(false); driveHint(msg, true, 'side'); });
+  }
+
+  function wireDriveUI() {
+    var connectBtn = el('driveConnectBtn');
+    if (connectBtn) connectBtn.addEventListener('click', driveOpenPicker);
+    var refreshBtn = el('driveRefreshBtn');
+    if (refreshBtn) refreshBtn.addEventListener('click', driveRefresh);
+    driveUpdateRefreshUi();
+  }
+
   /* ---- Modo claro/oscuro: alterna sobre el tema efectivo y persiste la elección ---- */
   function currentTheme() {
     var t = document.documentElement.getAttribute('data-theme');
@@ -3775,6 +3920,7 @@
   document.addEventListener('DOMContentLoaded', function () {
     wireEvents();
     wireTheme();
+    wireDriveUI();
     el('printBtn').addEventListener('click', function () { window.print(); });
     tryRestoreSaved();
   });
