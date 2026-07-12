@@ -1641,10 +1641,23 @@
    * ======================================================================= */
 
   var chartUid = 0;
+  // Charts render at viewBox W but stretch to 100% of their container's real pixel
+  // width, so a fixed small W badly oversizes text/strokes inside a full-width card
+  // (roughly 2x wider than a half-width .grid-2 card). Picking W from the container's
+  // actual layout slot keeps every chart's fonts at their true, designed size.
+  // Below the 980px breakpoint .grid-2 collapses to one column (see CSS), so every
+  // card — half or full — becomes viewport-width; clamp W to that instead of
+  // inflating it, or full-width charts would render with tiny, illegible text on phones.
+  var CHART_W_FULL = 1280;
+  function chartWidth(container, halfW) {
+    var vw = window.innerWidth || CHART_W_FULL;
+    if (vw < 980) return Math.min(CHART_W_FULL, Math.max(halfW, vw - 40));
+    return (container.closest && container.closest('.grid-2')) ? halfW : CHART_W_FULL;
+  }
   function renderBulletChart(container, opts) {
     // opts: {categories, values, targets, formatValue, formatTarget, barColorVar, seriesLabel, targetLabel}
     chartUid++;
-    var W = 640, H = 244, padL = 8, padR = 8, padT = 22, padB = 26;
+    var W = chartWidth(container, 640), H = 244, padL = 8, padR = 8, padT = 22, padB = 26;
     var plotW = W - padL - padR, plotH = H - padT - padB;
     var n = opts.categories.length;
     var bandW = plotW / n;
@@ -1843,7 +1856,7 @@
   function renderStackedBarChart(container, opts) {
     // opts: {categories, series:[{name,color,values(fractions 0..1)}]}
     chartUid++;
-    var W = 680, H = 260, padL = 8, padR = 8, padT = 10, padB = 26;
+    var W = chartWidth(container, 680), H = 260, padL = 8, padR = 8, padT = 10, padB = 26;
     var plotW = W - padL - padR, plotH = H - padT - padB;
     var n = opts.categories.length;
     var bandW = plotW / n;
@@ -1878,10 +1891,10 @@
         // name the series INSIDE the segment — matching colors across 8 thicknesses
         // is hard, so tall segments carry "3mm 45%" and medium ones just "3mm"
         if (hDraw >= 26) {
-          stackLabelsHtml += '<text class="stack-label" x="' + cx + '" y="' + (top + hDraw / 2 - 3) + '" text-anchor="middle">' + escapeHtml(s.name.replace(' mm', 'mm')) + '</text>' +
-            '<text class="stack-label" x="' + cx + '" y="' + (top + hDraw / 2 + 9) + '" text-anchor="middle">' + fmtPct(v / total, 0) + '</text>';
+          stackLabelsHtml += '<text class="mix-stack-label" x="' + cx + '" y="' + (top + hDraw / 2 - 3) + '" text-anchor="middle">' + escapeHtml(s.name.replace(' mm', 'mm')) + '</text>' +
+            '<text class="mix-stack-label" x="' + cx + '" y="' + (top + hDraw / 2 + 9) + '" text-anchor="middle">' + fmtPct(v / total, 0) + '</text>';
         } else if (hDraw >= 13) {
-          stackLabelsHtml += '<text class="stack-label" x="' + cx + '" y="' + (top + hDraw / 2 + 3.5) + '" text-anchor="middle">' + escapeHtml(s.name.replace(' mm', 'mm')) + '</text>';
+          stackLabelsHtml += '<text class="mix-stack-label" x="' + cx + '" y="' + (top + hDraw / 2 + 3.5) + '" text-anchor="middle">' + escapeHtml(s.name.replace(' mm', 'mm')) + '</text>';
         }
         segs.push({ i: i, si: si, cat: cat, name: s.name, v: v / total, cx: cx, top: top });
         yCursor -= segH;
@@ -1921,7 +1934,7 @@
   function renderGroupedBarChart(container, opts) {
     // opts: {categories, series:[{name,color,values}], formatValue}
     chartUid++;
-    var W = 680, H = 250, padL = 8, padR = 8, padT = 12, padB = 26;
+    var W = chartWidth(container, 680), H = 250, padL = 8, padR = 8, padT = 12, padB = 26;
     var plotW = W - padL - padR, plotH = H - padT - padB;
     var n = opts.categories.length;
     var nS = opts.series.length;
@@ -2006,8 +2019,9 @@
     // 5.8 estimate under-measured long names and clipped their first characters.
     var maxLabelLen = items.length ? Math.max.apply(null, items.map(function (it) { return (it.label || '').length; })) : 10;
     var labelW = Math.max(140, Math.min(440, maxLabelLen * 6.6 + 20));
-    var W = labelW + 470;
-    var plotW = W - labelW - padR;
+    var targetW = chartWidth(container, 640);
+    var plotW = Math.max(220, targetW - labelW - padR);
+    var W = labelW + plotW + padR;
     var H = n * rowH + padTop + padBottom || rowH;
 
     var maxV = items.length ? Math.max.apply(null, items.map(function (it) { return Math.abs(it.value); })) : 1;
@@ -2134,7 +2148,7 @@
       items.push({ label: 'Resto (' + resto.length + ' artículos)', kg: restoKg, share: restoShare, cum: 1 });
     }
     var n = items.length;
-    var W = 720, H = 300, padL = 40, padR = 20, padT = 16, padB = 24;
+    var W = chartWidth(container, 720), H = 300, padL = 40, padR = 20, padT = 16, padB = 24;
     var plotW = W - padL - padR, plotH = H - padT - padB;
     var bandW = plotW / Math.max(n, 1);
     var barW = Math.max(8, Math.min(34, bandW * 0.6));
@@ -2205,7 +2219,7 @@
     var series = opts.series;
     var nS = series.length;
     var n = opts.categories.length;
-    var W = 720, padL = 46, padR = 20, padB = 34;
+    var W = chartWidth(container, 720), padL = 46, padR = 20, padB = 34;
     var plotW = W - padL - padR, plotH = 230;
 
     var allVals = [];
@@ -2264,13 +2278,20 @@
     var padT = Math.max(46, maxR + 16 + Math.min(215, maxNameLen * 5.4 + 10));
     var H = padT + plotH + padB;
 
-    function y(v) { return padT + plotH - (v / maxV) * plotH; }
+    // A square-root y-scale, not linear: chatarra % is usually a long right-tailed
+    // distribution (most articles near 0%, an occasional article near 100%), so a
+    // linear axis squashes every normal value into a thin sliver at the bottom to
+    // make room for one outlier. Square-root compresses the top of the range and
+    // gives the bottom (where almost every point lives) much more room, without
+    // hiding or relabeling the outlier's true value.
+    var maxVSqrt = Math.sqrt(maxV) || 1;
+    function y(v) { return padT + plotH - (Math.sqrt(Math.max(0, v)) / maxVSqrt) * plotH; }
     var baseline = y(0);
     items.forEach(function (it) { it.cy = y(it.val); });
 
     var gridLines = 4, gridHtml = '', labelsHtml = '';
     for (var g = 0; g <= gridLines; g++) {
-      var v = maxV * g / gridLines;
+      var v = maxV * (g / gridLines) * (g / gridLines);
       var yy = y(v);
       gridHtml += '<line class="grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + yy + '" y2="' + yy + '"></line>';
       labelsHtml += '<text class="axis-label" x="' + (padL - 8) + '" y="' + (yy + 3) + '" text-anchor="end">' + opts.formatValue(v, true) + '</text>';
@@ -2350,7 +2371,7 @@
     // and the current month's actual-to-date show as a solid, narrower bar drawn on
     // top of it — so real and projected are always visually distinguishable at a glance.
     chartUid++;
-    var W = 720, H = 270, padL = 10, padR = 12, padT = 18, padB = 26;
+    var W = chartWidth(container, 720), H = 270, padL = 10, padR = 12, padT = 18, padB = 26;
     var plotW = W - padL - padR, plotH = H - padT - padB;
     var n = opts.categories.length;
     var bandW = plotW / n;
@@ -2438,7 +2459,7 @@
     // (same unit), which is what makes the overlay legitimate. The axis extends
     // below zero when deviations go negative.
     chartUid++;
-    var W = 720, H = 280, padL = 10, padR = 12, padT = 20, padB = 26;
+    var W = chartWidth(container, 720), H = 280, padL = 10, padR = 12, padT = 20, padB = 26;
     var plotW = W - padL - padR, plotH = H - padT - padB;
     var n = opts.categories.length;
     var bandW = plotW / n;
@@ -2527,7 +2548,7 @@
   function renderDeviationChart(container, opts) {
     // opts: {categories, values, formatValue, seriesLabel, goodIsPositive}
     chartUid++;
-    var W = 640, H = 220, padL = 8, padR = 8, padT = 20, padB = 26;
+    var W = chartWidth(container, 640), H = 220, padL = 8, padR = 8, padT = 20, padB = 26;
     var plotW = W - padL - padR, plotH = H - padT - padB;
     var n = opts.categories.length;
     var bandW = plotW / n;
