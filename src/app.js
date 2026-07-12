@@ -2273,9 +2273,15 @@
       it.hideLabel = lastLabelX != null && (it.cx - lastLabelX) < 11;
       if (!it.hideLabel) lastLabelX = it.cx;
     });
-    var maxNameLen = items.length ? Math.max.apply(null, items.map(function (it) { return it.hideLabel ? 0 : it.label.length; })) : 0;
+    // Long article names (30+ chars is common) rotated vertically force a tall top
+    // margin just to fit the single longest one — even when every bubble sits near
+    // the bottom, leaving that whole margin empty. Cap what's drawn on-chart (full
+    // name still shows on hover) so the reserved space stays proportionate.
+    var NAME_LABEL_MAX = 24;
+    function shortLabel(s) { return s.length > NAME_LABEL_MAX ? s.slice(0, NAME_LABEL_MAX - 1) + '…' : s; }
+    var maxNameLen = items.length ? Math.max.apply(null, items.map(function (it) { return it.hideLabel ? 0 : Math.min(it.label.length, NAME_LABEL_MAX); })) : 0;
     var maxR = items.length ? Math.max.apply(null, items.map(function (it) { return it.r; })) : minR;
-    var padT = Math.max(46, maxR + 16 + Math.min(215, maxNameLen * 5.4 + 10));
+    var padT = Math.max(40, maxR + 12 + maxNameLen * 5.4 + 8);
     var H = padT + plotH + padB;
 
     // A square-root y-scale, not linear: chatarra % is usually a long right-tailed
@@ -2322,7 +2328,7 @@
       if (!it.hideLabel) {
         // vertical label: anchored at the bubble's top edge, reading bottom-to-top
         var nameY = cy - r - 5;
-        nameLabelsHtml += '<text class="bubble-name-label" data-u="' + uid + '" x="' + cx + '" y="' + nameY + '" text-anchor="start" transform="rotate(-90 ' + cx + ' ' + nameY + ')" fill="' + it.color + '">' + escapeHtml(it.label) + '</text>';
+        nameLabelsHtml += '<text class="bubble-name-label" data-u="' + uid + '" x="' + cx + '" y="' + nameY + '" text-anchor="start" transform="rotate(-90 ' + cx + ' ' + nameY + ')" fill="' + it.color + '">' + escapeHtml(shortLabel(it.label)) + '</text>';
       }
       bubbles.push({ uid: uid, label: it.label, cat: it.cat, val: it.val, size: it.size, cx: cx, cy: cy, r: r });
     });
@@ -3683,13 +3689,14 @@
     STATE.year = data.years.length ? data.years[data.years.length - 1] : new Date().getFullYear();
     STATE.month = pickDefaultMonth(STATE.year);
     STATE.machine = data.machines[0];
-    var savedTab = restoreFilters(data);
+    restoreFilters(data); // restores machine/mes/etc. filters — the active tab is not restored: every login lands on Resumen
     if (STATE.sku.query) el('skuSearch').value = STATE.sku.query;
     populateSelectors();
     el('dzScreen').style.display = 'none';
     el('appShell').style.display = 'flex';
     renderAll();
-    if (savedTab && TAB_META[savedTab]) switchTab(savedTab);
+    switchTab('resumen');
+    window.scrollTo(0, 0);
   }
 
   function onFile(file) {
@@ -3798,8 +3805,8 @@
     box.classList.toggle('err', !!isErr);
   }
   function driveSetBusy(busy) {
-    var btn = el('driveConnectBtn'); if (btn) btn.disabled = busy;
-    var rbtn = el('driveRefreshBtn'); if (rbtn) rbtn.disabled = busy;
+    var btn = el('driveConnectBtn'); if (btn) { btn.disabled = busy; btn.classList.toggle('loading', busy); }
+    var rbtn = el('driveRefreshBtn'); if (rbtn) { rbtn.disabled = busy; rbtn.classList.toggle('loading', busy); }
   }
 
   function driveEnsureToken(promptMode, onReady, onError) {
@@ -3921,27 +3928,26 @@
    * como todo el panel es un solo archivo HTML sin servidor, la clave se valida en el
    * propio navegador — alguien con conocimientos técnicos podría saltársela revisando
    * el código. Se compara un hash SHA-256 en vez de la clave en texto plano solo para
-   * no dejarla a la vista en el código fuente a simple lectura. ---- */
-  var LS_AUTH = 'erpAnalyticsAuth';
-  var LOGIN_PASS_HASH = '629f4cf9337b0d0c76f305d860f98894cfa8c279516b425747514ca8710deb97';
+   * no dejarla a la vista en el código fuente a simple lectura. La sesión no se guarda:
+   * cada vez que se abre o recarga la página, vuelve a pedir usuario y clave. ---- */
+  var LOGIN_USERS = {
+    'gino espinosa': '629f4cf9337b0d0c76f305d860f98894cfa8c279516b425747514ca8710deb97', // 007
+    'admin': 'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3' // 123
+  };
   function sha256Hex(str) {
     return crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)).then(function (buf) {
       return Array.prototype.map.call(new Uint8Array(buf), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
     });
   }
   function wireLogin(onAuthed) {
-    el('logoutBtn').addEventListener('click', function () {
-      try { localStorage.removeItem(LS_AUTH); } catch (e) { }
-      location.reload();
-    });
-    var authed = document.documentElement.getAttribute('data-authed') === '1';
-    if (authed) { onAuthed(); return; }
+    el('logoutBtn').addEventListener('click', function () { location.reload(); });
     var form = el('loginForm');
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
+      var userKey = el('loginUser').value.trim().toLowerCase();
+      var expectedHash = LOGIN_USERS[userKey];
       sha256Hex(el('loginPass').value).then(function (hash) {
-        if (hash === LOGIN_PASS_HASH) {
-          try { localStorage.setItem(LS_AUTH, '1'); } catch (e) { }
+        if (expectedHash && hash === expectedHash) {
           document.documentElement.setAttribute('data-authed', '1');
           el('loginScreen').style.display = 'none';
           el('dzScreen').style.display = 'flex';

@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ERP Analytics — Panel de Producción</title>
 <script>
-// aplicar el tema guardado y el estado de sesión ANTES del primer render para evitar el destello
+// aplicar el tema guardado ANTES del primer render para evitar el destello.
+// La sesión de acceso (usuario/clave) NO se persiste a propósito — cada apertura
+// o recarga de la página vuelve a pedir usuario y clave.
 try {
   var t = localStorage.getItem('erpAnalyticsTheme');
   if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
-  if (localStorage.getItem('erpAnalyticsAuth') === '1') document.documentElement.setAttribute('data-authed', '1');
 } catch (e) { }
 </script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -85,7 +86,7 @@ try {
   --sb-text-dim: #8688a3;
   --sb-active-bg: #2b2d47;
   --sb-active-text: #ffffff;
-  --sb-accent: #6a7bf7;
+  --sb-accent: #2f6fed;
   --sb-border: rgba(255,255,255,0.07);
 }
 
@@ -131,7 +132,7 @@ button{font-family:inherit;}
 }
 .sidebar-brand .logo{
   width:34px;height:34px;border-radius:9px;flex:0 0 34px;
-  background:linear-gradient(135deg, var(--sb-accent), #a06af7);
+  background:linear-gradient(135deg, var(--sb-accent), #4fa3ff);
   display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;
   box-shadow:0 4px 14px -3px color-mix(in srgb, var(--sb-accent) 65%, transparent);
 }
@@ -245,7 +246,7 @@ html[data-authed="1"] #dzScreen{display:flex;}
 #dzInner,#loginInner{max-width:560px;width:100%;}
 #dzInner .dz-brand,#loginInner .dz-brand{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:22px;}
 #dzInner .dz-brand .logo,#loginInner .dz-brand .logo{
-  width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg, var(--sb-accent), #a06af7);
+  width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg, var(--sb-accent), #4fa3ff);
   display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:17px;
   box-shadow:0 6px 20px -4px color-mix(in srgb, var(--sb-accent) 60%, transparent);
 }
@@ -273,6 +274,16 @@ html[data-authed="1"] #dzScreen{display:flex;}
 .btn-drive:disabled{opacity:.6;cursor:default;transform:none;}
 #dzDriveHint{color:var(--text-muted);font-size:12px;margin-top:10px;min-height:16px;}
 #dzDriveHint.err{color:var(--critical);}
+/* Loading spinner shown on Drive buttons while connecting/downloading — swaps in for
+   the static icon so there's a clear "working on it" cue instead of a frozen button. */
+@keyframes btnSpin{to{transform:rotate(360deg);}}
+.btn-spinner{
+  display:none;width:14px;height:14px;border-radius:50%;flex:0 0 14px;
+  border:2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color:currentColor;animation:btnSpin .7s linear infinite;
+}
+.btn-drive.loading .btn-icon,.btn-reload.loading .btn-icon{display:none;}
+.btn-drive.loading .btn-spinner,.btn-reload.loading .btn-spinner{display:inline-block;}
 
 /* ---------- Build variants: "local" (downloadable, manual Excel upload only —
    Google's login won't work from a file:// origin) vs "online" (GitHub Pages,
@@ -318,7 +329,7 @@ html[data-build="local"] #driveRefreshBtn,html[data-build="local"] #driveRefresh
 #loginError{color:var(--critical);font-size:12.5px;margin:-4px 0 14px;display:none;text-align:left;}
 .btn-login{
   width:100%;padding:11px;border-radius:10px;border:none;cursor:pointer;
-  background:linear-gradient(135deg, var(--sb-accent), #a06af7);color:#fff;
+  background:linear-gradient(135deg, var(--sb-accent), #4fa3ff);color:#fff;
   font-size:14px;font-weight:700;letter-spacing:.2px;
   box-shadow:0 8px 20px -8px color-mix(in srgb, var(--sb-accent) 70%, transparent);
   transition:transform .15s var(--ease-out), box-shadow .15s;
@@ -560,7 +571,6 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
       </label>
       <div id="loginError">Contraseña incorrecta — inténtalo de nuevo.</div>
       <button type="submit" class="btn-login">Ingresar</button>
-      <p class="login-foot">Panel generado localmente en tu navegador. Ningún dato sale de este equipo.</p>
     </form>
   </div>
 </div>
@@ -578,8 +588,9 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
     <div id="dzDriveRow">
       <span class="dz-or">o</span>
       <button type="button" id="driveConnectBtn" class="btn-drive">
-        <svg width="16" height="16" viewBox="0 0 87.3 78" aria-hidden="true"><path fill="#0066da" d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"></path><path fill="#00ac47" d="M43.65 25l-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.5z"></path><path fill="#ea4335" d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z"></path><path fill="#00832d" d="M43.65 25l13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"></path><path fill="#2684fc" d="M59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"></path><path fill="#ffba00" d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z"></path></svg>
-        Conectar con Google Drive
+        <svg class="btn-icon" width="16" height="16" viewBox="0 0 87.3 78" aria-hidden="true"><path fill="#0066da" d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"></path><path fill="#00ac47" d="M43.65 25l-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.5z"></path><path fill="#ea4335" d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z"></path><path fill="#00832d" d="M43.65 25l13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"></path><path fill="#2684fc" d="M59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"></path><path fill="#ffba00" d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z"></path></svg>
+        <span class="btn-spinner" aria-hidden="true"></span>
+        <span class="btn-label">Conectar con Google Drive</span>
       </button>
       <div class="dz-drive-hint" id="dzDriveHint"></div>
     </div>
@@ -631,7 +642,8 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
     <div class="sidebar-foot">
       <div class="updated" id="updatedLabel"></div>
       <button class="btn-reload" id="driveRefreshBtn" style="display:none;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
+        <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
+        <span class="btn-spinner" aria-hidden="true"></span>
         <span id="driveRefreshLabel">Actualizar desde Drive</span>
       </button>
       <div id="driveRefreshHint"></div>
@@ -3342,9 +3354,15 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       it.hideLabel = lastLabelX != null && (it.cx - lastLabelX) < 11;
       if (!it.hideLabel) lastLabelX = it.cx;
     });
-    var maxNameLen = items.length ? Math.max.apply(null, items.map(function (it) { return it.hideLabel ? 0 : it.label.length; })) : 0;
+    // Long article names (30+ chars is common) rotated vertically force a tall top
+    // margin just to fit the single longest one — even when every bubble sits near
+    // the bottom, leaving that whole margin empty. Cap what's drawn on-chart (full
+    // name still shows on hover) so the reserved space stays proportionate.
+    var NAME_LABEL_MAX = 24;
+    function shortLabel(s) { return s.length > NAME_LABEL_MAX ? s.slice(0, NAME_LABEL_MAX - 1) + '…' : s; }
+    var maxNameLen = items.length ? Math.max.apply(null, items.map(function (it) { return it.hideLabel ? 0 : Math.min(it.label.length, NAME_LABEL_MAX); })) : 0;
     var maxR = items.length ? Math.max.apply(null, items.map(function (it) { return it.r; })) : minR;
-    var padT = Math.max(46, maxR + 16 + Math.min(215, maxNameLen * 5.4 + 10));
+    var padT = Math.max(40, maxR + 12 + maxNameLen * 5.4 + 8);
     var H = padT + plotH + padB;
 
     // A square-root y-scale, not linear: chatarra % is usually a long right-tailed
@@ -3391,7 +3409,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       if (!it.hideLabel) {
         // vertical label: anchored at the bubble's top edge, reading bottom-to-top
         var nameY = cy - r - 5;
-        nameLabelsHtml += '<text class="bubble-name-label" data-u="' + uid + '" x="' + cx + '" y="' + nameY + '" text-anchor="start" transform="rotate(-90 ' + cx + ' ' + nameY + ')" fill="' + it.color + '">' + escapeHtml(it.label) + '</text>';
+        nameLabelsHtml += '<text class="bubble-name-label" data-u="' + uid + '" x="' + cx + '" y="' + nameY + '" text-anchor="start" transform="rotate(-90 ' + cx + ' ' + nameY + ')" fill="' + it.color + '">' + escapeHtml(shortLabel(it.label)) + '</text>';
       }
       bubbles.push({ uid: uid, label: it.label, cat: it.cat, val: it.val, size: it.size, cx: cx, cy: cy, r: r });
     });
@@ -4752,13 +4770,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     STATE.year = data.years.length ? data.years[data.years.length - 1] : new Date().getFullYear();
     STATE.month = pickDefaultMonth(STATE.year);
     STATE.machine = data.machines[0];
-    var savedTab = restoreFilters(data);
+    restoreFilters(data); // restores machine/mes/etc. filters — the active tab is not restored: every login lands on Resumen
     if (STATE.sku.query) el('skuSearch').value = STATE.sku.query;
     populateSelectors();
     el('dzScreen').style.display = 'none';
     el('appShell').style.display = 'flex';
     renderAll();
-    if (savedTab && TAB_META[savedTab]) switchTab(savedTab);
+    switchTab('resumen');
+    window.scrollTo(0, 0);
   }
 
   function onFile(file) {
@@ -4867,8 +4886,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     box.classList.toggle('err', !!isErr);
   }
   function driveSetBusy(busy) {
-    var btn = el('driveConnectBtn'); if (btn) btn.disabled = busy;
-    var rbtn = el('driveRefreshBtn'); if (rbtn) rbtn.disabled = busy;
+    var btn = el('driveConnectBtn'); if (btn) { btn.disabled = busy; btn.classList.toggle('loading', busy); }
+    var rbtn = el('driveRefreshBtn'); if (rbtn) { rbtn.disabled = busy; rbtn.classList.toggle('loading', busy); }
   }
 
   function driveEnsureToken(promptMode, onReady, onError) {
@@ -4990,27 +5009,26 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
    * como todo el panel es un solo archivo HTML sin servidor, la clave se valida en el
    * propio navegador — alguien con conocimientos técnicos podría saltársela revisando
    * el código. Se compara un hash SHA-256 en vez de la clave en texto plano solo para
-   * no dejarla a la vista en el código fuente a simple lectura. ---- */
-  var LS_AUTH = 'erpAnalyticsAuth';
-  var LOGIN_PASS_HASH = '629f4cf9337b0d0c76f305d860f98894cfa8c279516b425747514ca8710deb97';
+   * no dejarla a la vista en el código fuente a simple lectura. La sesión no se guarda:
+   * cada vez que se abre o recarga la página, vuelve a pedir usuario y clave. ---- */
+  var LOGIN_USERS = {
+    'gino espinosa': '629f4cf9337b0d0c76f305d860f98894cfa8c279516b425747514ca8710deb97', // 007
+    'admin': 'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3' // 123
+  };
   function sha256Hex(str) {
     return crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)).then(function (buf) {
       return Array.prototype.map.call(new Uint8Array(buf), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
     });
   }
   function wireLogin(onAuthed) {
-    el('logoutBtn').addEventListener('click', function () {
-      try { localStorage.removeItem(LS_AUTH); } catch (e) { }
-      location.reload();
-    });
-    var authed = document.documentElement.getAttribute('data-authed') === '1';
-    if (authed) { onAuthed(); return; }
+    el('logoutBtn').addEventListener('click', function () { location.reload(); });
     var form = el('loginForm');
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
+      var userKey = el('loginUser').value.trim().toLowerCase();
+      var expectedHash = LOGIN_USERS[userKey];
       sha256Hex(el('loginPass').value).then(function (hash) {
-        if (hash === LOGIN_PASS_HASH) {
-          try { localStorage.setItem(LS_AUTH, '1'); } catch (e) { }
+        if (expectedHash && hash === expectedHash) {
           document.documentElement.setAttribute('data-authed', '1');
           el('loginScreen').style.display = 'none';
           el('dzScreen').style.display = 'flex';
