@@ -3917,6 +3917,47 @@
     driveUpdateRefreshUi();
   }
 
+  /* ---- Pantalla de acceso (usuario/clave). Es una barrera simple, no seguridad real:
+   * como todo el panel es un solo archivo HTML sin servidor, la clave se valida en el
+   * propio navegador — alguien con conocimientos técnicos podría saltársela revisando
+   * el código. Se compara un hash SHA-256 en vez de la clave en texto plano solo para
+   * no dejarla a la vista en el código fuente a simple lectura. ---- */
+  var LS_AUTH = 'erpAnalyticsAuth';
+  var LOGIN_PASS_HASH = '629f4cf9337b0d0c76f305d860f98894cfa8c279516b425747514ca8710deb97';
+  function sha256Hex(str) {
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)).then(function (buf) {
+      return Array.prototype.map.call(new Uint8Array(buf), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+    });
+  }
+  function wireLogin(onAuthed) {
+    el('logoutBtn').addEventListener('click', function () {
+      try { localStorage.removeItem(LS_AUTH); } catch (e) { }
+      location.reload();
+    });
+    var authed = document.documentElement.getAttribute('data-authed') === '1';
+    if (authed) { onAuthed(); return; }
+    var form = el('loginForm');
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      sha256Hex(el('loginPass').value).then(function (hash) {
+        if (hash === LOGIN_PASS_HASH) {
+          try { localStorage.setItem(LS_AUTH, '1'); } catch (e) { }
+          document.documentElement.setAttribute('data-authed', '1');
+          el('loginScreen').style.display = 'none';
+          el('dzScreen').style.display = 'flex';
+          onAuthed();
+        } else {
+          el('loginError').style.display = 'block';
+          form.classList.remove('shake');
+          void form.offsetWidth; // reinicia la animación aunque se repita el error
+          form.classList.add('shake');
+          el('loginPass').value = '';
+          el('loginPass').focus();
+        }
+      });
+    });
+  }
+
   /* ---- Modo claro/oscuro: alterna sobre el tema efectivo y persiste la elección ---- */
   function currentTheme() {
     var t = document.documentElement.getAttribute('data-theme');
@@ -3943,6 +3984,9 @@
     wireTheme();
     wireDriveUI();
     el('printBtn').addEventListener('click', function () { window.print(); });
-    tryRestoreSaved();
+    // tryRestoreSaved() can reveal the previously loaded Excel straight away — gate it
+    // behind the login screen so a returning-but-not-yet-authenticated visitor never
+    // sees real data appear behind the password form.
+    wireLogin(tryRestoreSaved);
   });
 })();

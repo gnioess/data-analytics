@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ERP Analytics — Panel de Producción</title>
 <script>
-// aplicar el tema guardado ANTES del primer render para evitar el destello
+// aplicar el tema guardado y el estado de sesión ANTES del primer render para evitar el destello
 try {
   var t = localStorage.getItem('erpAnalyticsTheme');
   if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+  if (localStorage.getItem('erpAnalyticsAuth') === '1') document.documentElement.setAttribute('data-authed', '1');
 } catch (e) { }
 </script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -236,15 +237,19 @@ button{font-family:inherit;}
 .search-input:hover{border-color:color-mix(in srgb, var(--series-1) 35%, var(--border));}
 .search-input:focus{outline:none;border-color:var(--series-1);box-shadow:0 0 0 3px color-mix(in srgb, var(--series-1) 18%, transparent);}
 
-/* ---------- Drop zone ---------- */
-#dzScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
-#dzInner{max-width:560px;width:100%;}
-#dzInner .dz-brand{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:22px;}
-#dzInner .dz-brand .logo{
+/* ---------- Login / drop zone ---------- */
+#loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+#dzScreen{min-height:100vh;display:none;align-items:center;justify-content:center;padding:24px;}
+html[data-authed="1"] #loginScreen{display:none;}
+html[data-authed="1"] #dzScreen{display:flex;}
+#dzInner,#loginInner{max-width:560px;width:100%;}
+#dzInner .dz-brand,#loginInner .dz-brand{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:22px;}
+#dzInner .dz-brand .logo,#loginInner .dz-brand .logo{
   width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg, var(--sb-accent), #a06af7);
   display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:17px;
+  box-shadow:0 6px 20px -4px color-mix(in srgb, var(--sb-accent) 60%, transparent);
 }
-#dzInner .dz-brand h1{font-size:19px;margin:0;font-weight:700;}
+#dzInner .dz-brand h1,#loginInner .dz-brand h1{font-size:19px;margin:0;font-weight:700;}
 #dropzone{
   border:2px dashed var(--baseline);border-radius:18px;padding:52px 24px;text-align:center;
   color:var(--text-secondary);background:var(--surface-1);box-shadow:var(--card-shadow);
@@ -252,7 +257,6 @@ button{font-family:inherit;}
 }
 #dropzone:hover{transform:translateY(-2px);box-shadow:var(--card-shadow-hover);border-color:color-mix(in srgb, var(--series-1) 50%, var(--baseline));}
 #dropzone.drag{border-color:var(--series-1);background:color-mix(in srgb, var(--series-1) 8%, var(--surface-1));transform:scale(1.01);}
-#dzInner .dz-brand .logo{box-shadow:0 6px 20px -4px color-mix(in srgb, var(--sb-accent) 60%, transparent);}
 #dropzone h2{margin:0 0 6px;color:var(--text-primary);font-size:18px;}
 #dropzone p{margin:4px 0;font-size:13px;}
 #dropzone .hint{color:var(--text-muted);font-size:12px;margin-top:10px;}
@@ -269,6 +273,48 @@ button{font-family:inherit;}
 .btn-drive:disabled{opacity:.6;cursor:default;transform:none;}
 #dzDriveHint{color:var(--text-muted);font-size:12px;margin-top:10px;min-height:16px;}
 #dzDriveHint.err{color:var(--critical);}
+
+/* ---------- Login screen ---------- */
+@keyframes loginRise{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+@keyframes loginShake{
+  10%,90%{transform:translateX(-1px);}
+  20%,80%{transform:translateX(2px);}
+  30%,50%,70%{transform:translateX(-4px);}
+  40%,60%{transform:translateX(4px);}
+}
+.login-card{
+  background:var(--surface-1);border:1px solid var(--border);border-radius:20px;
+  padding:36px 34px 30px;box-shadow:var(--card-shadow-hover);text-align:center;
+  animation:loginRise .45s var(--ease-out);
+}
+.login-card.shake{animation:loginShake .4s;}
+.login-icon{
+  width:46px;height:46px;border-radius:50%;margin:0 auto 14px;color:var(--sb-accent);
+  background:color-mix(in srgb, var(--sb-accent) 12%, var(--surface-2));
+  display:flex;align-items:center;justify-content:center;
+}
+.login-card h2{margin:0 0 4px;font-size:18px;color:var(--text-primary);}
+.login-sub{margin:0 0 24px;color:var(--text-muted);font-size:12.5px;}
+.login-field{display:block;text-align:left;margin-bottom:14px;}
+.login-field span{display:block;font-size:11.5px;font-weight:600;color:var(--text-secondary);margin-bottom:5px;}
+.login-field input{
+  font:inherit;font-size:14px;width:100%;background:var(--surface-2);color:var(--text-primary);
+  border:1px solid var(--border);border-radius:10px;padding:10px 13px;
+  transition:border-color .16s, box-shadow .16s;
+}
+.login-field input:hover{border-color:color-mix(in srgb, var(--sb-accent) 35%, var(--border));}
+.login-field input:focus{outline:none;border-color:var(--sb-accent);box-shadow:0 0 0 3px color-mix(in srgb, var(--sb-accent) 18%, transparent);}
+#loginError{color:var(--critical);font-size:12.5px;margin:-4px 0 14px;display:none;text-align:left;}
+.btn-login{
+  width:100%;padding:11px;border-radius:10px;border:none;cursor:pointer;
+  background:linear-gradient(135deg, var(--sb-accent), #a06af7);color:#fff;
+  font-size:14px;font-weight:700;letter-spacing:.2px;
+  box-shadow:0 8px 20px -8px color-mix(in srgb, var(--sb-accent) 70%, transparent);
+  transition:transform .15s var(--ease-out), box-shadow .15s;
+}
+.btn-login:hover{transform:translateY(-1px);box-shadow:0 10px 24px -8px color-mix(in srgb, var(--sb-accent) 80%, transparent);}
+.btn-login:active{transform:scale(.98);}
+.login-foot{margin:18px 0 0;color:var(--text-muted);font-size:11px;}
 
 /* ---------- App (hidden until file loaded) ---------- */
 .app-shell{display:none;}
@@ -484,6 +530,30 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
 </head>
 <body>
 
+<div id="loginScreen">
+  <div id="loginInner">
+    <div class="dz-brand"><div class="logo">EA</div><h1>ERP Analytics — Panel de Producción</h1></div>
+    <form id="loginForm" class="login-card" autocomplete="off">
+      <div class="login-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path><circle cx="12" cy="16" r="1.5"></circle></svg>
+      </div>
+      <h2>Acceso al panel</h2>
+      <p class="login-sub">Ingresa tus credenciales para continuar</p>
+      <label class="login-field">
+        <span>Usuario</span>
+        <input type="text" id="loginUser" value="Gino Espinosa" autocomplete="username">
+      </label>
+      <label class="login-field">
+        <span>Contraseña</span>
+        <input type="password" id="loginPass" placeholder="••••" autocomplete="current-password" autofocus>
+      </label>
+      <div id="loginError">Contraseña incorrecta — inténtalo de nuevo.</div>
+      <button type="submit" class="btn-login">Ingresar</button>
+      <p class="login-foot">Panel generado localmente en tu navegador. Ningún dato sale de este equipo.</p>
+    </form>
+  </div>
+</div>
+
 <div id="dzScreen">
   <div id="dzInner">
     <div class="dz-brand"><div class="logo">EA</div><h1>ERP Analytics — Panel de Producción</h1></div>
@@ -557,6 +627,10 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
       <button class="btn-reload" id="reloadBtn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
         Cargar otro Excel
+      </button>
+      <button class="btn-reload" id="logoutBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+        Cerrar sesión
       </button>
     </div>
   </aside>
@@ -4901,6 +4975,47 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     driveUpdateRefreshUi();
   }
 
+  /* ---- Pantalla de acceso (usuario/clave). Es una barrera simple, no seguridad real:
+   * como todo el panel es un solo archivo HTML sin servidor, la clave se valida en el
+   * propio navegador — alguien con conocimientos técnicos podría saltársela revisando
+   * el código. Se compara un hash SHA-256 en vez de la clave en texto plano solo para
+   * no dejarla a la vista en el código fuente a simple lectura. ---- */
+  var LS_AUTH = 'erpAnalyticsAuth';
+  var LOGIN_PASS_HASH = '629f4cf9337b0d0c76f305d860f98894cfa8c279516b425747514ca8710deb97';
+  function sha256Hex(str) {
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)).then(function (buf) {
+      return Array.prototype.map.call(new Uint8Array(buf), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+    });
+  }
+  function wireLogin(onAuthed) {
+    el('logoutBtn').addEventListener('click', function () {
+      try { localStorage.removeItem(LS_AUTH); } catch (e) { }
+      location.reload();
+    });
+    var authed = document.documentElement.getAttribute('data-authed') === '1';
+    if (authed) { onAuthed(); return; }
+    var form = el('loginForm');
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      sha256Hex(el('loginPass').value).then(function (hash) {
+        if (hash === LOGIN_PASS_HASH) {
+          try { localStorage.setItem(LS_AUTH, '1'); } catch (e) { }
+          document.documentElement.setAttribute('data-authed', '1');
+          el('loginScreen').style.display = 'none';
+          el('dzScreen').style.display = 'flex';
+          onAuthed();
+        } else {
+          el('loginError').style.display = 'block';
+          form.classList.remove('shake');
+          void form.offsetWidth; // reinicia la animación aunque se repita el error
+          form.classList.add('shake');
+          el('loginPass').value = '';
+          el('loginPass').focus();
+        }
+      });
+    });
+  }
+
   /* ---- Modo claro/oscuro: alterna sobre el tema efectivo y persiste la elección ---- */
   function currentTheme() {
     var t = document.documentElement.getAttribute('data-theme');
@@ -4927,7 +5042,10 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     wireTheme();
     wireDriveUI();
     el('printBtn').addEventListener('click', function () { window.print(); });
-    tryRestoreSaved();
+    // tryRestoreSaved() can reveal the previously loaded Excel straight away — gate it
+    // behind the login screen so a returning-but-not-yet-authenticated visitor never
+    // sees real data appear behind the password form.
+    wireLogin(tryRestoreSaved);
   });
 })();
 
