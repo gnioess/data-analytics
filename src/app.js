@@ -1451,11 +1451,13 @@
     function insumosPxQ(anio, opts) {
       opts = opts || {};
       var mesN = opts.mes ? MESES.indexOf(opts.mes) + 1 : null;
+      var categoriaKey = opts.categoria ? normKey(opts.categoria) : null;
       var map = {};
       D.vales.forEach(function (r) {
         if (r.anio !== anio || !r.articulo) return;
         if (mesN != null && r.mes !== mesN) return;
         if (opts.maquina && r.ccosto !== opts.maquina) return;
+        if (categoriaKey && normKey(r.cuenta) !== categoriaKey) return;
         var g = map[r.articulo];
         if (!g) g = map[r.articulo] = { articulo: r.articulo, cantidad: 0, gasto: 0, tMin: null, tMax: null, pPrimero: null, pUltimo: null };
         if (isNum(r.cantidad)) g.cantidad += r.cantidad;
@@ -3376,26 +3378,37 @@
       formatValue: function (v) { return fmtPct(v, 0); }, colorVar: 'var(--series-6)'
     });
 
-    var rows = pxq.slice(0, 12);
-    var html = '<table class="wide"><thead><tr><th>Insumo</th><th>Cantidad</th><th>Gasto Real</th><th>Últ. Precio</th><th>Precio IPC</th><th>Desv. vs IPC</th></tr></thead><tbody>';
-    rows.forEach(function (r) {
-      html += '<tr><td>' + escapeHtml(r.articulo) + '</td>' +
-        tdv(r.cantidad, fmtInt) + tdv(r.gasto, fmtMoney) + tdv(r.pUltimo, fmtMoney) + tdv(r.precioIPC, fmtMoney) +
-        tdv(r.vsIpc, function (v) { return fmtSigned(v, function (x) { return fmtPct(x, 0); }); }) + '</tr>';
-    });
-    html += '</tbody></table>';
-    el('insumosTable').innerHTML = html;
+    // Análisis PxQ: separa cuánto del gasto de cada categoría se explica por variación
+    // de PRECIO (efecto precio = (último − primer precio) × cantidad) y no de consumo —
+    // una categoría por gráfico en vez de una tabla plana de artículos individuales.
+    renderPxqCategoria('Aceite y Lubricante', 'chartPxqAceite', 'pxqAceiteCap', 'pxqTableAceite', maquina, STATE.insumos.mes, filtroTxt, 'var(--series-3)');
+    renderPxqCategoria('Insumos de Fábrica', 'chartPxqInsumosFab', 'pxqInsumosFabCap', 'pxqTableInsumosFab', maquina, STATE.insumos.mes, filtroTxt, 'var(--series-1)');
+    renderPxqCategoria('Embalajes', 'chartPxqEmbalajes', 'pxqEmbalajesCap', 'pxqTableEmbalajes', maquina, STATE.insumos.mes, filtroTxt, 'var(--series-8)');
 
-    // Análisis PxQ: primer vs. último precio y efecto precio × cantidad, desde las
-    // transacciones de vales (sí tienen fecha, a diferencia de la hoja Ppto Insumos)
-    var pxqTop = pxq.slice(0, 25);
-    el('pxqCap').textContent = pxqTop.length ?
-      ('Top ' + pxqTop.length + ' insumos por gasto — ' + filtroTxt +
-       '. Efecto precio = (último precio − primer precio) × cantidad: cuánto del gasto se explica por variación de precio y no de consumo.') :
-      ('Sin vales de consumo para este filtro (' + filtroTxt + ')');
-    var pxqHtml = '<table class="wide"><thead><tr><th>Insumo</th><th>Cantidad</th><th>Gasto</th><th>1er Precio</th><th>Últ. Precio</th><th>Δ Precio</th><th>Efecto Precio ($)</th><th>Precio IPC</th><th>Últ. vs IPC</th></tr></thead><tbody>';
-    pxqTop.forEach(function (r) {
-      pxqHtml += '<tr><td>' + escapeHtml(r.articulo) + '</td>' +
+    renderCostosCategoria('Aceite y Lubricante', 'chartCostosAceite', 'costosAceiteCap', maquina, maquinaTxt);
+    renderCostosCategoria('Insumos de Fábrica', 'chartCostosInsumosFab', 'costosInsumosFabCap', maquina, maquinaTxt);
+    renderCostosCategoria('Embalajes', 'chartCostosEmbalajes', 'costosEmbalajesCap', maquina, maquinaTxt);
+  }
+
+  // Análisis PxQ para una categoría: efecto precio ($) de sus insumos, ordenado por
+  // magnitud — positivo = el precio subió y encareció el gasto, negativo = bajó.
+  // El gráfico y la tabla muestran exactamente los mismos artículos.
+  function renderPxqCategoria(categoria, chartId, capId, tableId, maquina, mes, filtroTxt, colorVar) {
+    var pxqCat = STATE.engine.insumosPxQ(STATE.year, { maquina: maquina, mes: mes, categoria: categoria });
+    var top = pxqCat.filter(function (r) { return isNum(r.efectoPrecio); })
+      .sort(function (a, b) { return Math.abs(b.efectoPrecio) - Math.abs(a.efectoPrecio); })
+      .slice(0, 10);
+    renderRankedBarChart(el(chartId), {
+      items: top.map(function (r) { return { label: r.articulo, value: r.efectoPrecio }; }),
+      formatValue: function (v) { return fmtSigned(v, fmtMoney); }, colorVar: colorVar
+    });
+    el(capId).textContent = top.length ?
+      ('efecto precio (último − primer precio) × cantidad — ' + filtroTxt) :
+      ('sin vales de consumo de esta categoría para este filtro (' + filtroTxt + ')');
+
+    var tableHtml = '<table class="wide"><thead><tr><th>Insumo</th><th>Cantidad</th><th>Gasto</th><th>1er Precio</th><th>Últ. Precio</th><th>Δ Precio</th><th>Efecto Precio ($)</th><th>Precio IPC</th><th>Últ. vs IPC</th></tr></thead><tbody>';
+    top.forEach(function (r) {
+      tableHtml += '<tr><td>' + escapeHtml(r.articulo) + '</td>' +
         tdv(r.cantidad, fmtInt) + tdv(r.gasto, fmtMoney) +
         tdv(r.pPrimero, fmtMoney) + tdv(r.pUltimo, fmtMoney) +
         tdv(r.deltaPrecio, function (v) { return fmtSigned(v, function (x) { return fmtPct(x, 1); }); }) +
@@ -3404,12 +3417,8 @@
         tdv(r.vsIpc, function (v) { return fmtSigned(v, function (x) { return fmtPct(x, 1); }); }) +
         '</tr>';
     });
-    pxqHtml += '</tbody></table>';
-    el('pxqTable').innerHTML = pxqTop.length ? pxqHtml : '';
-
-    renderCostosCategoria('Aceite y Lubricante', 'chartCostosAceite', 'costosAceiteCap', maquina, maquinaTxt);
-    renderCostosCategoria('Insumos de Fábrica', 'chartCostosInsumosFab', 'costosInsumosFabCap', maquina, maquinaTxt);
-    renderCostosCategoria('Embalajes', 'chartCostosEmbalajes', 'costosEmbalajesCap', maquina, maquinaTxt);
+    tableHtml += '</tbody></table>';
+    el(tableId).innerHTML = top.length ? tableHtml : '';
   }
 
   // "Vale de consumo" real vs "Ppto Vale de Consumo" budget, monthly, for one cost
