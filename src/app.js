@@ -4083,13 +4083,20 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    wireEvents();
-    wireTheme();
-    wireDriveUI();
-    el('printBtn').addEventListener('click', function () { window.print(); });
-    // tryRestoreSaved() can reveal the previously loaded Excel straight away — gate it
-    // behind the login screen so a returning-but-not-yet-authenticated visitor never
-    // sees real data appear behind the password form.
-    wireLogin(tryRestoreSaved);
+    // wireLogin() goes FIRST and unguarded: if anything else below throws, the login
+    // form's submit handler must already be attached, or the "Ingresar" button does
+    // nothing (default form submit just reloads the page — looks exactly like a
+    // silent failure). Everything else is wrapped so one broken piece (e.g. a Drive
+    // API script that failed to load) can't take the rest of the app down with it.
+    wireLogin(function () {
+      try { wireEvents(); } catch (e) { console.error('wireEvents failed', e); }
+      try { wireDriveUI(); } catch (e) { console.error('wireDriveUI failed', e); }
+      try { el('printBtn').addEventListener('click', function () { window.print(); }); } catch (e) { console.error('printBtn wiring failed', e); }
+      // tryRestoreSaved() can reveal the previously loaded Excel straight away — only
+      // runs after a successful login, so a not-yet-authenticated visitor never sees
+      // real data appear behind the password form.
+      try { tryRestoreSaved(); } catch (e) { console.error('tryRestoreSaved failed', e); }
+    });
+    try { wireTheme(); } catch (e) { console.error('wireTheme failed', e); }
   });
 })();
