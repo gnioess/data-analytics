@@ -2016,10 +2016,15 @@
     var items = opts.items.filter(function (it) { return isNum(it.value); });
     var n = items.length;
     var rowH = 30, padR = 70, padTop = 4, padBottom = 4;
-    // size the label column to fit the longest full article name — never truncated.
-    // 6.6px/char approximates the 11px semibold font's real advance width; the old
-    // 5.8 estimate under-measured long names and clipped their first characters.
-    var maxLabelLen = items.length ? Math.max.apply(null, items.map(function (it) { return (it.label || '').length; })) : 10;
+    // Long item names (purchase-order style descriptions run 50-65+ chars) used to size
+    // the label column with no cap, so a single very long name could force the column
+    // to eat most of a half-width card, leaving barely any room for the bars themselves.
+    // Capping what's drawn keeps proportions consistent regardless of card width — the
+    // full name is still always available on hover.
+    var LABEL_MAX = 42;
+    function shortLabel(s) { return s.length > LABEL_MAX ? s.slice(0, LABEL_MAX - 1) + '…' : s; }
+    // 6.6px/char approximates the 11px semibold font's real advance width.
+    var maxLabelLen = items.length ? Math.max.apply(null, items.map(function (it) { return Math.min((it.label || '').length, LABEL_MAX); })) : 10;
     var labelW = Math.max(140, Math.min(440, maxLabelLen * 6.6 + 20));
     var targetW = chartWidth(container, 640);
     var plotW = Math.max(220, targetW - labelW - padR);
@@ -2036,7 +2041,7 @@
       var barW = Math.max(1, (Math.abs(it.value) / maxV) * plotW);
       var barH = rowH - 10;
       var by = y0 + 5;
-      barsHtml += '<text class="axis-label rank-label" x="' + (labelW - 10) + '" y="' + (by + barH / 2 + 3.5) + '" text-anchor="end">' + escapeHtml(it.label) + '</text>';
+      barsHtml += '<text class="axis-label rank-label" x="' + (labelW - 10) + '" y="' + (by + barH / 2 + 3.5) + '" text-anchor="end">' + escapeHtml(shortLabel(it.label)) + '</text>';
       barsHtml += '<rect class="bar" data-i="' + i + '" x="' + labelW + '" y="' + by + '" width="' + barW + '" height="' + barH + '" rx="3" fill="' + opts.colorVar + '"></rect>';
       barsHtml += '<text class="value-label" x="' + (labelW + barW + 6) + '" y="' + (by + barH / 2 + 3.5) + '" text-anchor="start">' + opts.formatValue(it.value) + '</text>';
       bars.push({ i: i, label: it.label, value: it.value, cx: labelW + barW / 2, top: by });
@@ -3381,33 +3386,48 @@
     // Análisis PxQ: separa cuánto del gasto de cada categoría se explica por variación
     // de PRECIO (efecto precio = (último − primer precio) × cantidad) y no de consumo —
     // una categoría por gráfico en vez de una tabla plana de artículos individuales.
-    renderPxqCategoria('Aceite y Lubricante', 'chartPxqAceite', 'pxqAceiteCap', 'pxqTableAceite', maquina, STATE.insumos.mes, filtroTxt, 'var(--series-3)');
-    renderPxqCategoria('Insumos de Fábrica', 'chartPxqInsumosFab', 'pxqInsumosFabCap', 'pxqTableInsumosFab', maquina, STATE.insumos.mes, filtroTxt, 'var(--series-1)');
-    renderPxqCategoria('Embalajes', 'chartPxqEmbalajes', 'pxqEmbalajesCap', 'pxqTableEmbalajes', maquina, STATE.insumos.mes, filtroTxt, 'var(--series-8)');
+    renderPxqCategoria('Aceite y Lubricante', 'chartPxqAceitePrecio', 'pxqAceitePrecioCap', 'chartPxqAceiteCantidad', 'pxqAceiteCantidadCap', 'pxqTableAceite', maquina, STATE.insumos.mes, filtroTxt, 'var(--series-3)');
+    renderPxqCategoria('Insumos de Fábrica', 'chartPxqInsumosFabPrecio', 'pxqInsumosFabPrecioCap', 'chartPxqInsumosFabCantidad', 'pxqInsumosFabCantidadCap', 'pxqTableInsumosFab', maquina, STATE.insumos.mes, filtroTxt, 'var(--series-1)');
+    renderPxqCategoria('Embalajes', 'chartPxqEmbalajesPrecio', 'pxqEmbalajesPrecioCap', 'chartPxqEmbalajesCantidad', 'pxqEmbalajesCantidadCap', 'pxqTableEmbalajes', maquina, STATE.insumos.mes, filtroTxt, 'var(--series-8)');
 
     renderCostosCategoria('Aceite y Lubricante', 'chartCostosAceite', 'costosAceiteCap', maquina, maquinaTxt);
     renderCostosCategoria('Insumos de Fábrica', 'chartCostosInsumosFab', 'costosInsumosFabCap', maquina, maquinaTxt);
     renderCostosCategoria('Embalajes', 'chartCostosEmbalajes', 'costosEmbalajesCap', maquina, maquinaTxt);
   }
 
-  // Análisis PxQ para una categoría: efecto precio ($) de sus insumos, ordenado por
-  // magnitud — positivo = el precio subió y encareció el gasto, negativo = bajó.
-  // El gráfico y la tabla muestran exactamente los mismos artículos.
-  function renderPxqCategoria(categoria, chartId, capId, tableId, maquina, mes, filtroTxt, colorVar) {
-    var pxqCat = STATE.engine.insumosPxQ(STATE.year, { maquina: maquina, mes: mes, categoria: categoria });
-    var top = pxqCat.filter(function (r) { return isNum(r.efectoPrecio); })
-      .sort(function (a, b) { return Math.abs(b.efectoPrecio) - Math.abs(a.efectoPrecio); })
+  // Análisis PxQ para una categoría — dos lentes sobre los mismos vales de consumo:
+  // "efecto precio" (cuánto del gasto se explica por variación de precio y no de
+  // consumo) y "cantidad" (qué se consume más, en volumen). La tabla de detalle no
+  // se limita a lo que aparece en cualquiera de los dos gráficos — muestra el ranking
+  // completo por gasto, que es el resumen más útil de la categoría.
+  function renderPxqCategoria(categoria, precioChartId, precioCapId, cantidadChartId, cantidadCapId, tableId, maquina, mes, filtroTxt, colorVar) {
+    var pxqCat = STATE.engine.insumosPxQ(STATE.year, { maquina: maquina, mes: mes, categoria: categoria }); // ya viene ordenado por gasto desc
+
+    var topPrecio = pxqCat.filter(function (r) { return isNum(r.efectoPrecio); })
+      .slice().sort(function (a, b) { return Math.abs(b.efectoPrecio) - Math.abs(a.efectoPrecio); })
       .slice(0, 10);
-    renderRankedBarChart(el(chartId), {
-      items: top.map(function (r) { return { label: r.articulo, value: r.efectoPrecio }; }),
+    renderRankedBarChart(el(precioChartId), {
+      items: topPrecio.map(function (r) { return { label: r.articulo, value: r.efectoPrecio }; }),
       formatValue: function (v) { return fmtSigned(v, fmtMoney); }, colorVar: colorVar
     });
-    el(capId).textContent = top.length ?
+    el(precioCapId).textContent = topPrecio.length ?
       ('efecto precio (último − primer precio) × cantidad — ' + filtroTxt) :
       ('sin vales de consumo de esta categoría para este filtro (' + filtroTxt + ')');
 
+    var topCantidad = pxqCat.filter(function (r) { return isNum(r.cantidad) && r.cantidad > 0; })
+      .slice().sort(function (a, b) { return b.cantidad - a.cantidad; })
+      .slice(0, 10);
+    renderRankedBarChart(el(cantidadChartId), {
+      items: topCantidad.map(function (r) { return { label: r.articulo, value: r.cantidad }; }),
+      formatValue: fmtInt, colorVar: colorVar
+    });
+    el(cantidadCapId).textContent = topCantidad.length ?
+      ('unidades consumidas, vales de consumo — ' + filtroTxt) :
+      ('sin vales de consumo de esta categoría para este filtro (' + filtroTxt + ')');
+
+    var tableRows = pxqCat.slice(0, 15);
     var tableHtml = '<table class="wide"><thead><tr><th>Insumo</th><th>Cantidad</th><th>Gasto</th><th>1er Precio</th><th>Últ. Precio</th><th>Δ Precio</th><th>Efecto Precio ($)</th><th>Precio IPC</th><th>Últ. vs IPC</th></tr></thead><tbody>';
-    top.forEach(function (r) {
+    tableRows.forEach(function (r) {
       tableHtml += '<tr><td>' + escapeHtml(r.articulo) + '</td>' +
         tdv(r.cantidad, fmtInt) + tdv(r.gasto, fmtMoney) +
         tdv(r.pPrimero, fmtMoney) + tdv(r.pUltimo, fmtMoney) +
@@ -3418,7 +3438,7 @@
         '</tr>';
     });
     tableHtml += '</tbody></table>';
-    el(tableId).innerHTML = top.length ? tableHtml : '';
+    el(tableId).innerHTML = tableRows.length ? tableHtml : '';
   }
 
   // "Vale de consumo" real vs "Ppto Vale de Consumo" budget, monthly, for one cost
