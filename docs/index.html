@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-build="online">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -273,6 +273,17 @@ html[data-authed="1"] #dzScreen{display:flex;}
 .btn-drive:disabled{opacity:.6;cursor:default;transform:none;}
 #dzDriveHint{color:var(--text-muted);font-size:12px;margin-top:10px;min-height:16px;}
 #dzDriveHint.err{color:var(--critical);}
+
+/* ---------- Build variants: "local" (downloadable, manual Excel upload only —
+   Google's login won't work from a file:// origin) vs "online" (GitHub Pages,
+   Google Drive only — no point offering a manual upload nobody will use there) ---- */
+html[data-build="online"] #dropzone{display:none;}
+html[data-build="online"] #dzDriveRow{margin-top:0;}
+html[data-build="online"] #dzDriveRow .dz-or{display:none;}
+html[data-build="online"] .btn-drive{font-size:15px;padding:14px 26px;}
+html[data-build="online"] #reloadBtn{display:none;}
+html[data-build="local"] #dzDriveRow{display:none;}
+html[data-build="local"] #driveRefreshBtn,html[data-build="local"] #driveRefreshHint{display:none;}
 
 /* ---------- Login screen ---------- */
 @keyframes loginRise{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
