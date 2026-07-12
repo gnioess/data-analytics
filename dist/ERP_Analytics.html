@@ -734,8 +734,8 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
             <div id="chartProdPpto"></div>
           </div>
           <div class="card">
-            <h3>Chatarra contra presupuesto</h3>
-            <div class="cap">% chatarra planta vs. meta (4,6%)</div>
+            <h3>Chatarra contra presupuesto <span class="subtle">(Calidad Planta: chatarra máquinas + desorillado bobinas)</span></h3>
+            <div class="cap" id="chatPptoCap">% chatarra planta vs. meta (4,6%)</div>
             <div id="chartChatPpto"></div>
           </div>
         </div>
@@ -2001,6 +2001,38 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       };
     }
 
+    /* ---- Target de chatarra dinámico por espesor: promedia el rechazo teórico
+     * estándar (D.rechazoTabla, tabla material×espesor de la hoja "Estandar"/"no
+     * borrar") ponderado por los kg realmente producidos de cada espesor ese mes —
+     * un mes que fabrica más material delgado tiene naturalmente más desperdicio
+     * teórico, así que el target se ajusta solo en vez de usar un número fijo todo
+     * el año. Si el Excel no trae esa tabla (no todos la traen), devuelve null y
+     * quien llama cae de vuelta a la meta fija de planta. Cuando el mismo espesor
+     * aparece con más de un material, se promedia su rechazo (no distinguimos
+     * material por artículo producido, solo por espesor). ---- */
+    function chatarraPorEspesorTarget(anio, mesNombre) {
+      if (!D.rechazoTabla.length) return null;
+      var mesN = MESES.indexOf(mesNombre) + 1;
+      var rows = D.produccion.filter(function (p) {
+        return p.anio === anio && p.mes === mesN && isNum(p.espesor) && p.espesor > 0 && isNum(p.totalUnEst);
+      });
+      if (!rows.length) return null;
+      var rechazoPorEsp = {};
+      D.rechazoTabla.forEach(function (r) {
+        if (!rechazoPorEsp[r.espesor]) rechazoPorEsp[r.espesor] = [];
+        rechazoPorEsp[r.espesor].push(r.rechazo);
+      });
+      var kgTotal = 0, kgPonderado = 0;
+      rows.forEach(function (p) {
+        var arr = rechazoPorEsp[p.espesor];
+        if (!arr) return; // espesor producido sin estándar de rechazo definido — se excluye del promedio
+        var rechazoProm = sum(arr) / arr.length;
+        kgPonderado += p.totalUnEst * rechazoProm;
+        kgTotal += p.totalUnEst;
+      });
+      return kgTotal ? kgPonderado / kgTotal : null;
+    }
+
     /* ---- Presupuesto vs real (rows 34-51) ---- */
     function presupuesto(anio, resumen) {
       var produccion = resumen.map(function (m) {
@@ -2013,9 +2045,10 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var chatarra = resumen.map(function (m) {
         var real = m.totalChatarraReal;
         var pct = m.pctChatarraPlanta;
-        var meta = pct == null ? null : META_CHATARRA_PLANTA;
+        var metaDinamica = chatarraPorEspesorTarget(anio, m.mes);
+        var meta = pct == null ? null : (metaDinamica != null ? metaDinamica : META_CHATARRA_PLANTA);
         var desv = (meta != null && pct != null) ? meta - pct : null;
-        return { mes: m.mes, mesAbbr: m.mesAbbr, real: real, pct: pct, meta: meta, desv: desv };
+        return { mes: m.mes, mesAbbr: m.mesAbbr, real: real, pct: pct, meta: meta, desv: desv, metaEsDinamica: metaDinamica != null };
       });
       return { produccion: produccion, chatarra: chatarra };
     }
@@ -3958,11 +3991,18 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       formatValue: fmtKgTick
     });
 
+    // el target dinámico por espesor (si el Excel trae la tabla de rechazo estándar)
+    // reemplaza la meta fija mes a mes — se avisa en el subtítulo cuál está activo,
+    // ya que la mayoría de los Excel de este reporte no traen esa tabla todavía.
+    var hayMetaDinamica = ppto.chatarra.some(function (m) { return m.metaEsDinamica; });
+    el('chatPptoCap').textContent = hayMetaDinamica ?
+      '% chatarra planta vs. meta dinámica por espesor (se ajusta según el mix de espesores producido cada mes; meses sin tabla de rechazo estándar usan 4,6% fijo)' :
+      '% chatarra planta vs. meta (4,6% fijo — este Excel no trae la tabla de rechazo estándar por espesor para calcular una meta dinámica)';
     renderComboChart(el('chartChatPpto'), {
       categories: ppto.chatarra.map(function (m) { return m.mesAbbr; }),
       barName: 'Chatarra planta', barColor: 'var(--series-6)',
       barValues: ppto.chatarra.map(function (m) { return m.pct; }),
-      metaName: 'Meta (4,6%)', metaValues: ppto.chatarra.map(function (m) { return m.meta; }),
+      metaName: hayMetaDinamica ? 'Meta por espesor' : 'Meta (4,6%)', metaValues: ppto.chatarra.map(function (m) { return m.meta; }),
       desvName: 'Desviación (meta − real)', desvValues: ppto.chatarra.map(function (m) { return m.desv; }),
       formatValue: fmtPctTick
     });
