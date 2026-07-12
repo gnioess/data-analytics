@@ -894,76 +894,40 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
               <div id="chartInsumosSobrecosto"></div>
             </div>
           </div>
-          <div class="section-title" style="margin-top:8px;"><span>Análisis PxQ — precio × cantidad</span><span class="line"></span></div>
-          <div class="section-title" style="margin-top:4px;"><span>Aceite y Lubricante</span><span class="line"></span></div>
-          <div class="grid-2">
-            <div class="card">
-              <h3>Efecto precio</h3>
-              <div class="cap" id="pxqAceitePrecioCap"></div>
-              <div id="chartPxqAceitePrecio"></div>
-            </div>
-            <div class="card">
-              <h3>Cantidad consumida</h3>
-              <div class="cap" id="pxqAceiteCantidadCap"></div>
-              <div id="chartPxqAceiteCantidad"></div>
-            </div>
-          </div>
+          <div class="section-title" style="margin-top:8px;"><span>Aceite y Lubricante</span><span class="line"></span></div>
           <div class="card">
-            <h3>Detalle</h3>
-            <div id="pxqTableAceite"></div>
-          </div>
-
-          <div class="section-title" style="margin-top:8px;"><span>Insumos de Fábrica</span><span class="line"></span></div>
-          <div class="grid-2">
-            <div class="card">
-              <h3>Efecto precio</h3>
-              <div class="cap" id="pxqInsumosFabPrecioCap"></div>
-              <div id="chartPxqInsumosFabPrecio"></div>
-            </div>
-            <div class="card">
-              <h3>Cantidad consumida</h3>
-              <div class="cap" id="pxqInsumosFabCantidadCap"></div>
-              <div id="chartPxqInsumosFabCantidad"></div>
-            </div>
-          </div>
-          <div class="card">
-            <h3>Detalle</h3>
-            <div id="pxqTableInsumosFab"></div>
-          </div>
-
-          <div class="section-title" style="margin-top:8px;"><span>Embalajes</span><span class="line"></span></div>
-          <div class="grid-2">
-            <div class="card">
-              <h3>Efecto precio</h3>
-              <div class="cap" id="pxqEmbalajesPrecioCap"></div>
-              <div id="chartPxqEmbalajesPrecio"></div>
-            </div>
-            <div class="card">
-              <h3>Cantidad consumida</h3>
-              <div class="cap" id="pxqEmbalajesCantidadCap"></div>
-              <div id="chartPxqEmbalajesCantidad"></div>
-            </div>
-          </div>
-          <div class="card">
-            <h3>Detalle</h3>
-            <div id="pxqTableEmbalajes"></div>
-          </div>
-
-          <div class="section-title" style="margin-top:8px;"><span>Presupuesto vs. real por categoría</span><span class="line"></span></div>
-          <div class="card">
-            <h3>Aceite y Lubricante</h3>
+            <h3>Tendencia anual — real vs. presupuesto</h3>
             <div class="cap" id="costosAceiteCap"></div>
             <div id="chartCostosAceite"></div>
           </div>
           <div class="card">
-            <h3>Insumos de Fábrica</h3>
+            <h3>Movimiento de precio y cantidad por ítem</h3>
+            <div class="cap" id="pxqAceiteCap"></div>
+            <div id="pxqTableAceite"></div>
+          </div>
+
+          <div class="section-title" style="margin-top:8px;"><span>Insumos de Fábrica</span><span class="line"></span></div>
+          <div class="card">
+            <h3>Tendencia anual — real vs. presupuesto</h3>
             <div class="cap" id="costosInsumosFabCap"></div>
             <div id="chartCostosInsumosFab"></div>
           </div>
           <div class="card">
-            <h3>Embalajes</h3>
+            <h3>Movimiento de precio y cantidad por ítem</h3>
+            <div class="cap" id="pxqInsumosFabCap"></div>
+            <div id="pxqTableInsumosFab"></div>
+          </div>
+
+          <div class="section-title" style="margin-top:8px;"><span>Embalajes</span><span class="line"></span></div>
+          <div class="card">
+            <h3>Tendencia anual — real vs. presupuesto</h3>
             <div class="cap" id="costosEmbalajesCap"></div>
             <div id="chartCostosEmbalajes"></div>
+          </div>
+          <div class="card">
+            <h3>Movimiento de precio y cantidad por ítem</h3>
+            <div class="cap" id="pxqEmbalajesCap"></div>
+            <div id="pxqTableEmbalajes"></div>
           </div>
         </div>
       </div>
@@ -2619,6 +2583,75 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       return items;
     }
 
+    /* ---- Movimiento de precio y cantidad por ítem, mes objetivo vs. mes base -----
+     * mes base = el primer mes del año con vales de ese ítem (ej. si compró por
+     * primera vez en enero, ese es el base, sin importar el filtro de mes actual).
+     * mes objetivo = el mes filtrado, o el último mes con datos si el filtro es
+     * "Todos" (año completo). El precio de cada mes es un promedio ponderado
+     * (gasto ÷ cantidad de ese mes), no el precio de una sola transacción — más
+     * robusto si un ítem se compró varias veces en el mismo mes a precios distintos.
+     * precioIPC es una referencia de inflación, no un presupuesto real por ítem
+     * (el Excel solo trae presupuesto a nivel de categoría × máquina × mes). ---- */
+    function insumosMovimiento(anio, opts) {
+      opts = opts || {};
+      var mesObjetivoFiltro = opts.mes ? MESES.indexOf(opts.mes) + 1 : null;
+      var categoriaKey = opts.categoria ? normKey(opts.categoria) : null;
+      var porArticulo = {};
+      D.vales.forEach(function (r) {
+        if (r.anio !== anio || !r.articulo) return;
+        if (opts.maquina && r.ccosto !== opts.maquina) return;
+        if (categoriaKey && normKey(r.cuenta) !== categoriaKey) return;
+        var g = porArticulo[r.articulo];
+        if (!g) g = porArticulo[r.articulo] = { articulo: r.articulo, meses: {} };
+        var gm = g.meses[r.mes];
+        if (!gm) gm = g.meses[r.mes] = { cantidad: 0, gasto: 0 };
+        if (isNum(r.cantidad)) gm.cantidad += r.cantidad;
+        if (isNum(r.valor)) gm.gasto += r.valor;
+      });
+
+      var ipcPor = {};
+      (D.pptoInsumos || []).forEach(function (r) {
+        var k = normKey(r.articulo);
+        if (ipcPor[k] == null && isNum(r.precioIPC)) ipcPor[k] = r.precioIPC;
+      });
+
+      function precioMes(gm) { return (gm && isNum(gm.cantidad) && gm.cantidad !== 0) ? gm.gasto / gm.cantidad : null; }
+
+      var items = Object.keys(porArticulo).map(function (k) {
+        var g = porArticulo[k];
+        var mesesConDatos = Object.keys(g.meses).map(Number).sort(function (a, b) { return a - b; });
+        if (!mesesConDatos.length) return null;
+        var mesBaseN = mesesConDatos[0];
+        var mesObjetivoN = mesObjetivoFiltro != null ? mesObjetivoFiltro : mesesConDatos[mesesConDatos.length - 1];
+        var base = g.meses[mesBaseN];
+        var obj = g.meses[mesObjetivoN];
+        var precioBase = precioMes(base), precioObj = precioMes(obj);
+        var esPrimeraCompra = mesObjetivoN === mesBaseN;
+        var deltaPrecio = (!esPrimeraCompra && isNum(precioBase) && precioBase !== 0 && isNum(precioObj)) ? (precioObj - precioBase) / precioBase : null;
+        var deltaCantidad = (!esPrimeraCompra && base && obj && base.cantidad) ? (obj.cantidad - base.cantidad) / base.cantidad : null;
+        var ipc = ipcPor[normKey(g.articulo)];
+        var vsIpc = (isNum(ipc) && ipc !== 0 && isNum(precioObj)) ? (precioObj - ipc) / ipc : null;
+        // gasto/cantidad del período visible: el mes filtrado, o el año completo si no hay filtro
+        var cantidadPeriodo = 0, gastoPeriodo = 0;
+        (mesObjetivoFiltro != null ? [mesObjetivoFiltro] : mesesConDatos).forEach(function (m) {
+          var gm = g.meses[m];
+          if (gm) { cantidadPeriodo += gm.cantidad; gastoPeriodo += gm.gasto; }
+        });
+        return {
+          articulo: g.articulo, mesBase: MESES[mesBaseN - 1], mesObjetivo: MESES[mesObjetivoN - 1],
+          esPrimeraCompra: esPrimeraCompra, sinComprasMesObjetivo: mesObjetivoFiltro != null && !obj,
+          cantidadBase: base ? base.cantidad : null, cantidadObjetivo: obj ? obj.cantidad : null,
+          precioBase: precioBase, precioObjetivo: precioObj,
+          deltaPrecio: deltaPrecio, deltaCantidad: deltaCantidad,
+          precioIPC: isNum(ipc) ? ipc : null, vsIpc: vsIpc,
+          cantidad: cantidadPeriodo || null, gasto: gastoPeriodo || null
+        };
+      }).filter(Boolean);
+
+      items.sort(function (a, b) { return (b.gasto || 0) - (a.gasto || 0); });
+      return items;
+    }
+
     /* ---- Buscador de SKU: producción vs. chatarra por artículo × máquina ---- */
     // Identity key: the article DESCRIPTION (normalized), falling back to the code
     // when a row has no description. Producción keys articles by "Código Artículo"
@@ -2762,7 +2795,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       proyeccionCierre: proyeccionCierre, proyeccionAnalitica: proyeccionAnalitica,
       paretoChatarra: paretoChatarra, paretoProduccion: paretoProduccion,
       tendenciasPlanta: tendenciasPlanta,
-      puntosCriticos: puntosCriticos, insumosPxQ: insumosPxQ,
+      puntosCriticos: puntosCriticos, insumosPxQ: insumosPxQ, insumosMovimiento: insumosMovimiento,
       espesorKgFiltrado: espesorKgFiltrado, espesoresDisponibles: espesoresDisponibles,
       skuBuscador: skuBuscador, skuMonthlyTrend: skuMonthlyTrend, skuArticleMonthlyTrend: skuArticleMonthlyTrend
     };
@@ -4513,62 +4546,61 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       formatValue: function (v) { return fmtPct(v, 0); }, colorVar: 'var(--series-6)'
     });
 
-    // Análisis PxQ: separa cuánto del gasto de cada categoría se explica por variación
-    // de PRECIO (efecto precio = (último − primer precio) × cantidad) y no de consumo —
-    // una categoría por gráfico en vez de una tabla plana de artículos individuales.
-    renderPxqCategoria('Aceite y Lubricante', 'chartPxqAceitePrecio', 'pxqAceitePrecioCap', 'chartPxqAceiteCantidad', 'pxqAceiteCantidadCap', 'pxqTableAceite', maquina, STATE.insumos.mes, filtroTxt, 'var(--series-3)');
-    renderPxqCategoria('Insumos de Fábrica', 'chartPxqInsumosFabPrecio', 'pxqInsumosFabPrecioCap', 'chartPxqInsumosFabCantidad', 'pxqInsumosFabCantidadCap', 'pxqTableInsumosFab', maquina, STATE.insumos.mes, filtroTxt, 'var(--series-1)');
-    renderPxqCategoria('Embalajes', 'chartPxqEmbalajesPrecio', 'pxqEmbalajesPrecioCap', 'chartPxqEmbalajesCantidad', 'pxqEmbalajesCantidadCap', 'pxqTableEmbalajes', maquina, STATE.insumos.mes, filtroTxt, 'var(--series-8)');
-
+    // Cada categoría agrupa: su tendencia anual real vs. presupuesto (comparación real
+    // contra presupuesto, a nivel de categoría — el único nivel al que el Excel trae
+    // presupuesto de verdad) y el movimiento de precio/cantidad por ítem individual
+    // (el Excel no trae presupuesto por ítem, así que ahí se usa el precio IPC como
+    // referencia de inflación, dejado explícito en el texto).
     renderCostosCategoria('Aceite y Lubricante', 'chartCostosAceite', 'costosAceiteCap', maquina, maquinaTxt);
+    renderInsumoMovimiento('Aceite y Lubricante', 'pxqTableAceite', 'pxqAceiteCap', maquina, STATE.insumos.mes, filtroTxt);
+
     renderCostosCategoria('Insumos de Fábrica', 'chartCostosInsumosFab', 'costosInsumosFabCap', maquina, maquinaTxt);
+    renderInsumoMovimiento('Insumos de Fábrica', 'pxqTableInsumosFab', 'pxqInsumosFabCap', maquina, STATE.insumos.mes, filtroTxt);
+
     renderCostosCategoria('Embalajes', 'chartCostosEmbalajes', 'costosEmbalajesCap', maquina, maquinaTxt);
+    renderInsumoMovimiento('Embalajes', 'pxqTableEmbalajes', 'pxqEmbalajesCap', maquina, STATE.insumos.mes, filtroTxt);
   }
 
-  // Análisis PxQ para una categoría — dos lentes sobre los mismos vales de consumo:
-  // "efecto precio" (cuánto del gasto se explica por variación de precio y no de
-  // consumo) y "cantidad" (qué se consume más, en volumen). La tabla de detalle no
-  // se limita a lo que aparece en cualquiera de los dos gráficos — muestra el ranking
-  // completo por gasto, que es el resumen más útil de la categoría.
-  function renderPxqCategoria(categoria, precioChartId, precioCapId, cantidadChartId, cantidadCapId, tableId, maquina, mes, filtroTxt, colorVar) {
-    var pxqCat = STATE.engine.insumosPxQ(STATE.year, { maquina: maquina, mes: mes, categoria: categoria }); // ya viene ordenado por gasto desc
-
-    var topPrecio = pxqCat.filter(function (r) { return isNum(r.efectoPrecio); })
-      .slice().sort(function (a, b) { return Math.abs(b.efectoPrecio) - Math.abs(a.efectoPrecio); })
-      .slice(0, 10);
-    renderRankedBarChart(el(precioChartId), {
-      items: topPrecio.map(function (r) { return { label: r.articulo, value: r.efectoPrecio }; }),
-      formatValue: function (v) { return fmtSigned(v, fmtMoney); }, colorVar: colorVar
-    });
-    el(precioCapId).textContent = topPrecio.length ?
-      ('efecto precio (último − primer precio) × cantidad — ' + filtroTxt) :
+  // Un ítem por fila: compara su "mes base" (primera compra del año) contra el mes
+  // filtrado (o el más reciente con datos, si el filtro es "Todos") — precio y
+  // cantidad, cada uno con su propia flecha de variación. El precio también se
+  // compara contra el precio IPC como referencia (no hay presupuesto real por ítem).
+  function renderInsumoMovimiento(categoria, tableId, capId, maquina, mes, filtroTxt) {
+    var items = STATE.engine.insumosMovimiento(STATE.year, { maquina: maquina, mes: mes, categoria: categoria }).slice(0, 15);
+    el(capId).textContent = items.length ?
+      ('cada ítem compara su primer mes de compra del año contra ' + (mes || 'el mes más reciente con datos') +
+       ' — precio IPC es una referencia de inflación, no presupuesto real del ítem — ' + filtroTxt) :
       ('sin vales de consumo de esta categoría para este filtro (' + filtroTxt + ')');
 
-    var topCantidad = pxqCat.filter(function (r) { return isNum(r.cantidad) && r.cantidad > 0; })
-      .slice().sort(function (a, b) { return b.cantidad - a.cantidad; })
-      .slice(0, 10);
-    renderRankedBarChart(el(cantidadChartId), {
-      items: topCantidad.map(function (r) { return { label: r.articulo, value: r.cantidad }; }),
-      formatValue: fmtInt, colorVar: colorVar
-    });
-    el(cantidadCapId).textContent = topCantidad.length ?
-      ('unidades consumidas, vales de consumo — ' + filtroTxt) :
-      ('sin vales de consumo de esta categoría para este filtro (' + filtroTxt + ')');
+    function deltaCell(pct, esPrimeraCompra, sinDatos, judged) {
+      if (esPrimeraCompra) return '<td class="dash">primera compra</td>';
+      if (sinDatos) return '<td class="dash">sin compras</td>';
+      if (pct == null) return '<td class="dash">-</td>';
+      var cls = judged ? (pct < 0 ? 'good' : (pct > 0 ? 'bad' : 'neutral')) : 'neutral';
+      var arrow = pct < 0 ? '▼' : (pct > 0 ? '▲' : '—');
+      return '<td class="delta ' + cls + '">' + arrow + ' ' + fmtPct(Math.abs(pct), 1) + '</td>';
+    }
 
-    var tableRows = pxqCat.slice(0, 15);
-    var tableHtml = '<table class="wide"><thead><tr><th>Insumo</th><th>Cantidad</th><th>Gasto</th><th>1er Precio</th><th>Últ. Precio</th><th>Δ Precio</th><th>Efecto Precio ($)</th><th>Precio IPC</th><th>Últ. vs IPC</th></tr></thead><tbody>';
-    tableRows.forEach(function (r) {
-      tableHtml += '<tr><td>' + escapeHtml(r.articulo) + '</td>' +
-        tdv(r.cantidad, fmtInt) + tdv(r.gasto, fmtMoney) +
-        tdv(r.pPrimero, fmtMoney) + tdv(r.pUltimo, fmtMoney) +
-        tdv(r.deltaPrecio, function (v) { return fmtSigned(v, function (x) { return fmtPct(x, 1); }); }) +
-        tdv(r.efectoPrecio, function (v) { return fmtSigned(v, function (x) { return fmtMoney(x); }); }) +
+    var html = '<table class="wide"><thead><tr>' +
+      '<th>Insumo</th><th>Mes base</th><th>Cantidad</th><th>Δ Cantidad</th>' +
+      '<th>Precio</th><th>Δ Precio</th><th>Precio IPC (ref.)</th><th>Desv. vs IPC</th><th>Gasto período</th>' +
+      '</tr></thead><tbody>';
+    items.forEach(function (r) {
+      html += '<tr><td>' + escapeHtml(r.articulo) + '</td>' +
+        '<td class="dash">' + r.mesBase + '</td>' +
+        tdv(r.cantidadObjetivo, fmtInt) +
+        deltaCell(r.deltaCantidad, r.esPrimeraCompra, r.sinComprasMesObjetivo, false) +
+        tdv(r.precioObjetivo, fmtMoney) +
+        deltaCell(r.deltaPrecio, r.esPrimeraCompra, r.sinComprasMesObjetivo, true) +
         tdv(r.precioIPC, fmtMoney) +
-        tdv(r.vsIpc, function (v) { return fmtSigned(v, function (x) { return fmtPct(x, 1); }); }) +
+        // negativo = pagando MENOS que la referencia IPC (bueno) — reutiliza deltaCell
+        // en vez de tdv(), que colorea cualquier negativo en rojo sin importar el sentido.
+        deltaCell(r.vsIpc, false, false, true) +
+        tdv(r.gasto, fmtMoney) +
         '</tr>';
     });
-    tableHtml += '</tbody></table>';
-    el(tableId).innerHTML = tableRows.length ? tableHtml : '';
+    html += '</tbody></table>';
+    el(tableId).innerHTML = items.length ? html : '';
   }
 
   // "Vale de consumo" real vs "Ppto Vale de Consumo" budget, monthly, for one cost
