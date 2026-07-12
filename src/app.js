@@ -91,6 +91,19 @@
   }
   function sum(arr) { var s = 0, has = false; for (var i = 0; i < arr.length; i++) { var v = arr[i]; if (isNum(v)) { s += v; has = true; } } return has ? s : 0; }
   function isMachineLike(name) { return /^(perfiladora|tubera)[0-9]+$/.test(normKey(name)); }
+  // ordinary least-squares fit y = a + b*x over {x,y} points — the trend line behind
+  // every "forecast" in the Proyecciones tab. Returns null with fewer than 2 points.
+  function linreg(points) {
+    var n = points.length;
+    if (n < 2) return null;
+    var sx = 0, sy = 0, sxx = 0, sxy = 0;
+    points.forEach(function (p) { sx += p.x; sy += p.y; sxx += p.x * p.x; sxy += p.x * p.y; });
+    var denom = n * sxx - sx * sx;
+    if (!denom) return { a: sy / n, b: 0 };
+    var b = (n * sxy - sx * sy) / denom;
+    var a = (sy - b * sx) / n;
+    return { a: a, b: b };
+  }
 
   var NF_INT = new Intl.NumberFormat('es-CL', { maximumFractionDigits: 0 });
   var NF_1D = new Intl.NumberFormat('es-CL', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
@@ -1208,6 +1221,139 @@
       };
     }
 
+    /* ---- Proyecciones y estadística: cierre de mes y de año por tendencia lineal ----
+     * Método: los meses cerrados (y el mes en curso, prorrateado al ritmo actual —
+     * mismo cálculo que proyeccionCierre) son los puntos "reales"; se ajusta una recta
+     * de mínimos cuadrados sobre esos puntos y se usa para proyectar los meses que aún
+     * no tienen ningún dato. Kilos y $ (magnitudes que se pueden sumar) se proyectan
+     * por separado y el % o el $/kg del cierre anual se derivan de esos totales — nunca
+     * promediando razones directamente, que sesga el resultado. Es una proyección
+     * simple y transparente (no un modelo de series de tiempo), correcta como primera
+     * lectura de "vamos bien o mal para cerrar el mes/año", no como pronóstico fino. */
+    function proyeccionAnalitica(anio, opts) {
+      opts = opts || {};
+      var maquina = opts.maquina || null;
+
+      var mesesReales;
+      if (maquina) {
+        var det = detalleAnio(anio, maquina);
+        mesesReales = det.meses.map(function (m) {
+          return {
+            mes: m.mes, mesAbbr: m.mesAbbr,
+            prodKg: m.prodEstandar, pptoProdKg: m.pptoProduccion,
+            chatKg: m.chatarra, chatPct: m.chatarraPct, chatMeta: m.metaChatarraEstandar,
+            valorVales: m.valorVales, costoKg: m.costoPorKilo, costoMeta: m.metaPresupuesto,
+            oee: m.oee, oeeMeta: m.oeeMeta
+          };
+        });
+      } else {
+        var res = resumenPlanta(anio);
+        mesesReales = MESES.map(function (mesNombre, i) {
+          var dm = detalleMes(anio, mesNombre);
+          var valorValesPlanta = zeroToNull(sum(dm.columnas.filter(function (c) { return !c.isBraner; })
+            .map(function (c) { return c.valorVales; })));
+          var r = res[i];
+          return {
+            mes: mesNombre, mesAbbr: MESES_ABBR[i],
+            prodKg: r.prodEstandar, pptoProdKg: pptoTotalVal(mesNombre),
+            chatKg: r.totalChatarraReal, chatPct: r.pctChatarraPlanta, chatMeta: META_CHATARRA_PLANTA,
+            valorVales: valorValesPlanta, costoKg: dm.costoPlanta, costoMeta: dm.metaPlanta,
+            oee: r.oeeMensual, oeeMeta: oeeMetaVal('OEE Planta', mesNombre)
+          };
+        });
+      }
+
+      var cierre = proyeccionCierre(anio);
+      var mesActualN = cierre ? cierre.mesN : null;
+      var enCurso = cierre ? !cierre.cerrado : false;
+      var factorDias = enCurso ? cierre.diasMes / cierre.diaActual : 1;
+
+      // kg / $ (extensivas): el mes en curso se prorratea al ritmo actual antes de
+      // entrar a la regresión; los meses futuros se extrapolan con la recta ajustada
+      function forecastExtensiva(field) {
+        var pts = [];
+        for (var i = 1; i <= (mesActualN || 0); i++) {
+          var v = mesesReales[i - 1][field];
+          if (!isNum(v)) continue;
+          pts.push({ x: i, y: (i === mesActualN && enCurso) ? v * factorDias : v });
+        }
+        var reg = linreg(pts);
+        var serie = mesesReales.map(function (m, i0) {
+          var idx = i0 + 1;
+          if (idx <= (mesActualN || 0)) {
+            var proy = (idx === mesActualN && enCurso) ? m[field] * factorDias : null;
+            return { mes: m.mes, mesAbbr: m.mesAbbr, actual: m[field], proyectado: proy, esFuturo: false };
+          }
+          var yhat = reg ? Math.max(0, reg.a + reg.b * idx) : null;
+          return { mes: m.mes, mesAbbr: m.mesAbbr, actual: null, proyectado: yhat, esFuturo: true };
+        });
+        var total = 0, has = false;
+        serie.forEach(function (s) {
+          var v = s.proyectado != null ? s.proyectado : s.actual;
+          if (isNum(v)) { total += v; has = true; }
+        });
+        return { serie: serie, total: has ? total : null, pendiente: reg ? reg.b : null };
+      }
+
+      // %/tasas: se regresiona directo sobre el valor observado (más simple; una tasa
+      // no se "acumula" mes a mes como sí lo hacen los kg o los $)
+      function forecastTasa(field) {
+        var pts = [];
+        for (var i = 1; i <= (mesActualN || 0); i++) {
+          var v = mesesReales[i - 1][field];
+          if (isNum(v)) pts.push({ x: i, y: v });
+        }
+        var reg = linreg(pts);
+        return mesesReales.map(function (m, i0) {
+          var idx = i0 + 1;
+          if (idx <= (mesActualN || 0)) return { mes: m.mes, mesAbbr: m.mesAbbr, actual: m[field], proyectado: null, esFuturo: false };
+          var yhat = reg ? reg.a + reg.b * idx : null;
+          return { mes: m.mes, mesAbbr: m.mesAbbr, actual: null, proyectado: yhat, esFuturo: true };
+        });
+      }
+
+      var prod = forecastExtensiva('prodKg');
+      var chat = forecastExtensiva('chatKg');
+      var vales = forecastExtensiva('valorVales');
+      var oeeSerie = forecastTasa('oee');
+      var chatPctSerie = forecastTasa('chatPct');
+      var costoKgSerie = forecastTasa('costoKg');
+
+      function promedioMeta(field) {
+        var vals = mesesReales.map(function (m) { return m[field]; }).filter(isNum);
+        return vals.length ? sum(vals) / vals.length : null;
+      }
+      var pptoAnual = zeroToNull(sum(mesesReales.map(function (m) { return m.pptoProdKg; }).filter(isNum)));
+      var chatMetaRef = promedioMeta('chatMeta');
+      var costoMetaProm = promedioMeta('costoMeta');
+      var oeeMetaProm = promedioMeta('oeeMeta');
+
+      var chatPctAnual = (chat.total != null && prod.total != null && (chat.total + prod.total) > 0) ?
+        chat.total / (chat.total + prod.total) : null;
+      var costoKgAnual = (vales.total != null && prod.total) ? vales.total / prod.total : null;
+      var oeeAnual = (function () {
+        var vals = oeeSerie.map(function (s) { return s.proyectado != null ? s.proyectado : s.actual; }).filter(isNum);
+        return vals.length ? sum(vals) / vals.length : null;
+      })();
+
+      return {
+        maquina: maquina, mes: cierre ? cierre.mes : null,
+        diaActual: cierre ? cierre.diaActual : null, diasMes: cierre ? cierre.diasMes : null, enCurso: enCurso,
+        produccion: prod, chatarra: chat, valorVales: vales,
+        oee: { serie: oeeSerie }, chatarraPct: { serie: chatPctSerie }, costoKg: { serie: costoKgSerie },
+        anual: {
+          prodKg: prod.total, pptoKg: pptoAnual,
+          desvProdPct: (prod.total != null && pptoAnual) ? (prod.total - pptoAnual) / pptoAnual : null,
+          chatKg: chat.total, chatPct: chatPctAnual, chatMeta: chatMetaRef,
+          desvChatPct: (chatPctAnual != null && chatMetaRef != null) ? chatMetaRef - chatPctAnual : null,
+          costoKg: costoKgAnual, costoMeta: costoMetaProm,
+          desvCostoPct: (costoKgAnual != null && costoMetaProm) ? (costoMetaProm - costoKgAnual) / costoMetaProm : null,
+          oee: oeeAnual, oeeMeta: oeeMetaProm,
+          desvOeePct: (oeeAnual != null && oeeMetaProm != null) ? oeeAnual - oeeMetaProm : null
+        }
+      };
+    }
+
     /* ---- Tendencias de planta: costo/kg vs. meta y calidad promedio, por mes ---- */
     function tendenciasPlanta(anio) {
       return MESES.map(function (mesNombre, i) {
@@ -1481,7 +1627,8 @@
       pptoTotalVal: pptoTotalVal, oeeMetaVal: oeeMetaVal,
       torreControl: torreControl, aporteOEEPorMaquina: aporteOEEPorMaquina, productMix: productMix,
       produccionMensualPorMaquina: produccionMensualPorMaquina, costosCategoria: costosCategoria,
-      proyeccionCierre: proyeccionCierre, paretoChatarra: paretoChatarra, paretoProduccion: paretoProduccion,
+      proyeccionCierre: proyeccionCierre, proyeccionAnalitica: proyeccionAnalitica,
+      paretoChatarra: paretoChatarra, paretoProduccion: paretoProduccion,
       tendenciasPlanta: tendenciasPlanta,
       puntosCriticos: puntosCriticos, insumosPxQ: insumosPxQ,
       espesorKgFiltrado: espesorKgFiltrado, espesoresDisponibles: espesoresDisponibles,
@@ -2196,6 +2343,93 @@
     return { hiddenLabels: items.filter(function (it) { return it.hideLabel; }).length };
   }
 
+  function renderForecastChart(container, opts) {
+    // opts: {categories, actual:[], proyectado:[], meta:[]?, formatValue, barColor}
+    // A "ghost bar" chart: for the current (in-progress) month and every future month,
+    // a wide, dashed, low-opacity bar shows the linear-trend projection; closed months
+    // and the current month's actual-to-date show as a solid, narrower bar drawn on
+    // top of it — so real and projected are always visually distinguishable at a glance.
+    chartUid++;
+    var W = 720, H = 270, padL = 10, padR = 12, padT = 18, padB = 26;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var n = opts.categories.length;
+    var bandW = plotW / n;
+    var wGhost = Math.max(10, Math.min(34, bandW * 0.62));
+    var wSolid = wGhost * 0.5;
+
+    var all = [].concat(opts.actual, opts.proyectado, opts.meta || []).filter(isNum);
+    var maxV = all.length ? Math.max.apply(null, all) * 1.18 : 1;
+    var minV = all.length ? Math.min(0, Math.min.apply(null, all)) : 0;
+    if (minV < 0) minV = minV * 1.15;
+
+    function y(v) { return padT + plotH - ((v - minV) / (maxV - minV)) * plotH; }
+    var baseline = y(0);
+
+    var gridHtml = '', labelsHtml = '';
+    for (var g = 0; g <= 4; g++) {
+      var v = minV + (maxV - minV) * g / 4;
+      var yy = y(v);
+      gridHtml += '<line class="grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + yy + '" y2="' + yy + '"></line>';
+      labelsHtml += '<text class="axis-label" x="' + padL + '" y="' + (yy - 3) + '">' + opts.formatValue(v, true) + '</text>';
+    }
+
+    function cxOf(i) { return padL + bandW * i + bandW / 2; }
+    var ghostHtml = '', solidHtml = '', metaHtml = '', xLabelsHtml = '', valueLabelsHtml = '';
+    var pts = [];
+    opts.categories.forEach(function (cat, i) {
+      var cx = cxOf(i);
+      xLabelsHtml += '<text class="axis-label" x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle">' + cat + '</text>';
+      var proy = opts.proyectado[i], act = opts.actual[i];
+      if (isNum(proy)) {
+        var topG = Math.min(baseline, y(proy)), hG = Math.max(1, Math.abs(y(proy) - baseline));
+        ghostHtml += '<rect x="' + (cx - wGhost / 2) + '" y="' + topG + '" width="' + wGhost + '" height="' + hG +
+          '" rx="3" fill="' + opts.barColor + '" fill-opacity="0.22" stroke="' + opts.barColor + '" stroke-width="1.3" stroke-dasharray="3 2"></rect>';
+        if (!isNum(act)) valueLabelsHtml += '<text class="value-label" x="' + cx + '" y="' + (topG - 5) + '" text-anchor="middle" opacity=".75">≈' + opts.formatValue(proy) + '</text>';
+      }
+      if (isNum(act)) {
+        var top = Math.min(baseline, y(act)), h = Math.max(1, Math.abs(y(act) - baseline));
+        solidHtml += '<rect class="bar" data-i="' + i + '" x="' + (cx - wSolid / 2) + '" y="' + top + '" width="' + wSolid + '" height="' + h + '" rx="2.5" fill="' + opts.barColor + '"></rect>';
+        valueLabelsHtml += '<text class="value-label" x="' + cx + '" y="' + (top - 5) + '" text-anchor="middle">' + opts.formatValue(act) + '</text>';
+      }
+      if (opts.meta && isNum(opts.meta[i])) {
+        var ym = y(opts.meta[i]);
+        metaHtml += '<line x1="' + (cx - wGhost / 2 - 3) + '" x2="' + (cx + wGhost / 2 + 3) + '" y1="' + ym + '" y2="' + ym + '" stroke="var(--text-primary)" stroke-width="2"></line>';
+      }
+      pts.push({ i: i, cx: cx, cat: cat, act: act, proy: proy, meta: opts.meta ? opts.meta[i] : null });
+    });
+
+    var legendHtml = '<div class="chart-legend">' +
+      '<span class="sw"><span class="dot" style="background:' + opts.barColor + '"></span>Real</span>' +
+      '<span class="sw"><span class="dot" style="background:' + opts.barColor + ';opacity:.4;border:1px dashed ' + opts.barColor + ';"></span>Proyectado</span>' +
+      (opts.meta ? '<span class="sw"><span class="dot" style="background:var(--text-primary)"></span>Meta / Ppto</span>' : '') + '</div>';
+
+    var tipId = 'tip' + chartUid;
+    container.innerHTML = '<div class="chart-wrap">' + legendHtml +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
+      '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
+      gridHtml + labelsHtml + ghostHtml + solidHtml + metaHtml + valueLabelsHtml + xLabelsHtml +
+      '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
+
+    var tip = container.querySelector('#' + tipId);
+    var wrapEl = container.querySelector('.chart-wrap');
+    container.querySelectorAll('.bar').forEach(function (elm) {
+      var p = pts[parseInt(elm.getAttribute('data-i'), 10)];
+      if (!p) return;
+      elm.addEventListener('mousemove', function () {
+        var rect = wrapEl.getBoundingClientRect();
+        var scale = rect.width / W;
+        tip.style.left = (p.cx * scale) + 'px';
+        tip.style.top = ((padT + 4) * scale) + 'px';
+        tip.style.opacity = 1;
+        tip.innerHTML = '<strong>' + p.cat + '</strong>' +
+          (isNum(p.act) ? '<br>Real: ' + opts.formatValue(p.act) : '') +
+          (isNum(p.proy) ? '<br>Proyectado: ' + opts.formatValue(p.proy) : '') +
+          (isNum(p.meta) ? '<br>Meta/Ppto: ' + opts.formatValue(p.meta) : '');
+      });
+      elm.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+    });
+  }
+
   function renderComboChart(container, opts) {
     // opts: {categories, barName, barColor, barValues, metaName, metaValues,
     //        desvName, desvValues, formatValue}
@@ -2425,7 +2659,8 @@
     sku: { maquina: null, mes: null, query: '' },
     productos: { maquina: null, mes: null, espesor: null },
     insumos: { maquina: null, mes: null },
-    criticos: { mes: null, maquina: null, estado: null }
+    criticos: { mes: null, maquina: null, estado: null },
+    proyecciones: { maquina: null }
   };
 
   function el(id) { return document.getElementById(id); }
@@ -2510,12 +2745,6 @@
       desvValues: resumen.map(function (m, i) {
         return (isNum(m.oeeMensual) && isNum(metaSerie[i])) ? m.oeeMensual - metaSerie[i] : null;
       }),
-      formatValue: fmtPctTick
-    });
-
-    renderLineChart(el('chartCalidadTrend'), {
-      categories: tend.map(function (m) { return m.mesAbbr; }),
-      series: [{ name: 'Calidad promedio máquinas', color: 'var(--series-5)', values: tend.map(function (m) { return zeroToNull(m.calidad); }) }],
       formatValue: fmtPctTick
     });
   }
@@ -2786,13 +3015,8 @@
     var skuMachineOptions = [{ value: '', label: 'Todas' }].concat(
       machines.map(function (m) { return { value: m, label: machineShortLabel(m, STATE.data.machineCodes) }; })
     );
-    // default to a single machine (not "Todas") so the bubble chart starts on a
-    // readable view instead of every article across every machine at once —
-    // unless we restored the user's saved filters, where null means "Todas"
-    if (!STATE.restored) {
-      if (STATE.sku.maquina == null && machines.length) STATE.sku.maquina = machines[0];
-      if (STATE.productos.maquina == null && machines.length) STATE.productos.maquina = machines[0];
-    }
+    // every filter defaults to "todas las máquinas" / "año completo" — the user picks
+    // a narrower scope explicitly rather than starting pre-filtered
     renderSegmented('skuMachineSeg', skuMachineOptions, STATE.sku.maquina || '', function (val) {
       STATE.sku.maquina = val || null;
       renderSkuBuscador();
@@ -2848,6 +3072,11 @@
       STATE.criticos.estado = val || null;
       renderCriticos(STATE.year);
     });
+
+    renderSegmented('proyeccionesMachineSeg', skuMachineOptions, STATE.proyecciones.maquina || '', function (val) {
+      STATE.proyecciones.maquina = val || null;
+      renderProyecciones(STATE.year);
+    });
   }
 
   function pickDefaultMonth(anio) {
@@ -2877,20 +3106,21 @@
     }
     var pct2 = function (v) { return fmtPct(v, 2); };
     var pct1 = function (v) { return fmtPct(v, 1); };
+    // soft dashed rule between the Chatarra / OEE / Costo-por-kg column groups
     var html = '<table class="wide"><thead><tr><th>Máquina</th>' +
       '<th>Chatarra</th><th>Meta</th><th>Desv.</th><th>Estado</th>' +
-      '<th>OEE</th><th>Meta</th><th>Desv.</th><th>Estado</th>' +
-      '<th>Costo/kg</th><th>Meta</th><th>Desv.</th><th>Estado</th></tr></thead><tbody>';
+      '<th class="group-sep">OEE</th><th>Meta</th><th>Desv.</th><th>Estado</th>' +
+      '<th class="group-sep">Costo/kg</th><th>Meta</th><th>Desv.</th><th>Estado</th></tr></thead><tbody>';
     rows.forEach(function (r) {
       html += '<tr>' +
         '<td>' + escapeHtml(machineShortLabel(r.maquina, STATE.data.machineCodes)) + ' <span class="subtle">' + escapeHtml(r.maquina) + '</span></td>' +
         tdv(r.chatarraPct, pct2) + tdv(r.metaChatarraEstandar, pct2) +
         desvTd(r.chatarraPct, r.metaChatarraEstandar, true, pct2) +
         '<td>' + pill(r.chatarraEstado) + '</td>' +
-        tdv(r.oee, pct1) + tdv(r.oeeMeta, pct1) +
+        tdv(r.oee, pct1, 'group-sep') + tdv(r.oeeMeta, pct1) +
         desvTd(r.oee, r.oeeMeta, false, pct1) +
         '<td>' + pill(r.oeeEstado) + '</td>' +
-        tdv(r.costoPorKilo, fmtMoney) + tdv(r.metaPresupuesto, fmtMoney) +
+        tdv(r.costoPorKilo, fmtMoney, 'group-sep') + tdv(r.metaPresupuesto, fmtMoney) +
         desvTd(r.costoPorKilo, r.metaPresupuesto, true, fmtMoney) +
         '<td>' + pill(r.costoEstado) + '</td>' +
         '</tr>';
@@ -2932,22 +3162,28 @@
 
     var estadoFiltro = STATE.criticos.estado || null;
     var visibles = pc.items.filter(function (it) { return !estadoFiltro || it.estado === estadoFiltro; });
+    // one card per exact indicator (its "tipo" becomes the card title, e.g. "OEE vs
+    // Meta", "Costo Aceite y Lubricante"), grouped in the OEE/Producción/Chatarra/
+    // Costos order and no longer needing a redundant "Indicador" column
     var html = '';
     CRITICOS_GRUPOS.forEach(function (grupo) {
-      var items = visibles.filter(function (it) { return it.grupo === grupo; });
-      if (!items.length) return;
-      html += '<div class="card"><h3>' + grupo + '</h3>' +
-        '<table class="wide"><thead><tr><th>Indicador</th><th>Máquina</th><th>Real</th><th>Meta / Ppto</th><th>Desviación</th><th>Estado</th></tr></thead><tbody>';
-      items.forEach(function (it) {
-        var fmt = CRITICOS_FMT[it.fmtKind] || fmtInt;
-        html += '<tr>' +
-          '<td>' + escapeHtml(it.tipo) + '</td>' +
-          '<td>' + (it.maquina === 'Planta' ? 'Planta' : escapeHtml(machineShortLabel(it.maquina, STATE.data.machineCodes)) + ' <span class="subtle">' + escapeHtml(it.maquina) + '</span>') + '</td>' +
-          tdv(it.real, fmt) + tdv(it.meta, fmt) +
-          '<td class="' + (it.gravedad > 0 ? 'neg' : 'pos') + '">' + fmtSigned(it.desvRel, function (v) { return fmtPct(v, 1); }) + '</td>' +
-          '<td>' + CRITICOS_PILL[it.estado] + '</td></tr>';
+      var tipos = [];
+      visibles.forEach(function (it) { if (it.grupo === grupo && tipos.indexOf(it.tipo) < 0) tipos.push(it.tipo); });
+      tipos.forEach(function (tipo) {
+        var items = visibles.filter(function (it) { return it.tipo === tipo; });
+        if (!items.length) return;
+        html += '<div class="card"><h3>' + escapeHtml(tipo) + '</h3>' +
+          '<table class="wide"><thead><tr><th>Máquina</th><th>Real</th><th>Meta / Ppto</th><th>Desviación</th><th>Estado</th></tr></thead><tbody>';
+        items.forEach(function (it) {
+          var fmt = CRITICOS_FMT[it.fmtKind] || fmtInt;
+          html += '<tr>' +
+            '<td>' + (it.maquina === 'Planta' ? 'Planta' : escapeHtml(machineShortLabel(it.maquina, STATE.data.machineCodes)) + ' <span class="subtle">' + escapeHtml(it.maquina) + '</span>') + '</td>' +
+            tdv(it.real, fmt) + tdv(it.meta, fmt) +
+            '<td class="' + (it.gravedad > 0 ? 'neg' : 'pos') + '">' + fmtSigned(it.desvRel, function (v) { return fmtPct(v, 1); }) + '</td>' +
+            '<td>' + CRITICOS_PILL[it.estado] + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
       });
-      html += '</tbody></table></div>';
     });
     el('criticosSecciones').innerHTML = html ||
       '<div class="card"><div class="cap">Sin indicadores para este filtro.</div></div>';
@@ -2983,6 +3219,101 @@
     el('proyeccionTable').innerHTML = html;
   }
 
+  function proyChip(label, value, sub, accent) {
+    return '<div class="tile" style="--accent:' + accent + ';">' +
+      '<div class="label">' + label + '</div>' +
+      '<div class="value">' + value + '</div>' +
+      (sub ? '<div class="delta ' + sub.cls + '">' + sub.text + '</div>' : '') + '</div>';
+  }
+  function proyDeltaSub(desvPct, favorableLabel, contraLabel) {
+    if (desvPct == null) return null;
+    var good = desvPct >= 0;
+    return { cls: good ? 'good' : 'bad', text: fmtSigned(desvPct, function (v) { return fmtPct(v, 1); }) + ' ' + (good ? favorableLabel : contraLabel) };
+  }
+
+  function renderProyecciones(anio) {
+    var maquina = STATE.proyecciones.maquina;
+    var maquinaTxt = maquina ? machineShortLabel(maquina, STATE.data.machineCodes) : 'toda la planta';
+    var pa = STATE.engine.proyeccionAnalitica(anio, { maquina: maquina });
+    var empty = el('proyeccionesEmpty'), content = el('proyeccionesContent');
+    if (!pa.mes) { empty.style.display = 'block'; content.style.display = 'none'; return; }
+    empty.style.display = 'none'; content.style.display = 'block';
+
+    // meta/presupuesto mensual (12 valores), calculado una sola vez y reutilizado en
+    // los 4 gráficos y en las tarjetas de cierre de mes
+    var detMaquina = maquina ? STATE.engine.detalleAnio(anio, maquina) : null;
+    var pptoProdSerie = MESES.map(function (m, i) {
+      return detMaquina ? detMaquina.meses[i].pptoProduccion : STATE.engine.pptoTotalVal(m);
+    });
+    var costoMetaSerie = MESES.map(function (m, i) {
+      return detMaquina ? detMaquina.meses[i].metaPresupuesto : null;
+    });
+    var oeeMetaSerie = MESES.map(function (m, i) {
+      return detMaquina ? detMaquina.meses[i].oeeMeta : STATE.engine.oeeMetaVal('OEE Planta', m);
+    });
+
+    el('proyMesLabel').textContent = pa.mes + ' — ' + maquinaTxt;
+    el('proyMesCap').textContent = pa.enCurso ?
+      ('Avance al día ' + pa.diaActual + ' de ' + pa.diasMes + ': se proyecta el cierre del mes prorrateando el ritmo actual (valor a la fecha ÷ días transcurridos × días del mes).') :
+      (pa.mes + ' ya cerró — el cierre de mes es el dato real, sin proyección.');
+
+    var mesIdx = MESES.indexOf(pa.mes);
+    var mesProd = pa.produccion.serie[mesIdx], mesChat = pa.chatarraPct.serie[mesIdx];
+    var mesCosto = pa.costoKg.serie[mesIdx], mesOee = pa.oee.serie[mesIdx];
+    var prodCierreVal = mesProd ? (mesProd.proyectado != null ? mesProd.proyectado : mesProd.actual) : null;
+    var pptoMesKg = pptoProdSerie[mesIdx];
+    var desvMesProd = (prodCierreVal != null && pptoMesKg) ? (prodCierreVal - pptoMesKg) / pptoMesKg : null;
+    var chatCierreVal = mesChat ? mesChat.actual : null; // % del mes: se usa el valor real observado tal cual
+    var desvMesChat = (chatCierreVal != null && pa.anual.chatMeta != null) ? pa.anual.chatMeta - chatCierreVal : null;
+    var costoCierreVal = mesCosto ? mesCosto.actual : null;
+    var costoMetaMes = costoMetaSerie[mesIdx];
+    var desvMesCosto = (costoCierreVal != null && costoMetaMes) ? (costoMetaMes - costoCierreVal) / costoMetaMes : null;
+    var oeeCierreVal = mesOee ? mesOee.actual : null;
+    var oeeMetaMes = oeeMetaSerie[mesIdx];
+    var desvMesOee = (oeeCierreVal != null && oeeMetaMes != null) ? oeeCierreVal - oeeMetaMes : null;
+
+    el('proyMesChips').innerHTML = [
+      proyChip('Producción proyectada', fmtKgTick(prodCierreVal) + ' kg', proyDeltaSub(desvMesProd, 'sobre ppto', 'bajo ppto'), 'var(--series-1)'),
+      proyChip('Chatarra', chatCierreVal != null ? fmtPct(chatCierreVal, 2) : '-', proyDeltaSub(desvMesChat, 'bajo meta', 'sobre meta'), 'var(--series-6)'),
+      proyChip('Costo/kg', costoCierreVal != null ? fmtMoney(costoCierreVal) : '-', proyDeltaSub(desvMesCosto, 'bajo ppto', 'sobre ppto'), 'var(--series-3)'),
+      proyChip('OEE', oeeCierreVal != null ? fmtPct(oeeCierreVal, 1) : '-', proyDeltaSub(desvMesOee, 'sobre meta', 'bajo meta'), 'var(--series-2)')
+    ].join('');
+
+    var a = pa.anual;
+    el('proyAnioChips').innerHTML = [
+      proyChip('Producción proyectada al año', fmtKgTick(a.prodKg) + ' kg', proyDeltaSub(a.desvProdPct, 'sobre ppto', 'bajo ppto'), 'var(--series-1)'),
+      proyChip('Chatarra proyectada', a.chatPct != null ? fmtPct(a.chatPct, 2) : '-', proyDeltaSub(a.desvChatPct, 'bajo meta', 'sobre meta'), 'var(--series-6)'),
+      proyChip('Costo/kg proyectado', a.costoKg != null ? fmtMoney(a.costoKg) : '-', proyDeltaSub(a.desvCostoPct, 'bajo ppto', 'sobre ppto'), 'var(--series-3)'),
+      proyChip('OEE proyectado', a.oee != null ? fmtPct(a.oee, 1) : '-', proyDeltaSub(a.desvOeePct, 'sobre meta', 'bajo meta'), 'var(--series-2)')
+    ].join('');
+
+    renderForecastChart(el('chartProyProduccion'), {
+      categories: MESES_ABBR,
+      actual: pa.produccion.serie.map(function (s) { return s.actual; }),
+      proyectado: pa.produccion.serie.map(function (s) { return s.proyectado; }),
+      meta: pptoProdSerie, formatValue: fmtKgTick, barColor: 'var(--series-1)'
+    });
+    renderForecastChart(el('chartProyChatarra'), {
+      categories: MESES_ABBR,
+      actual: pa.chatarraPct.serie.map(function (s) { return s.actual; }),
+      proyectado: pa.chatarraPct.serie.map(function (s) { return s.proyectado; }),
+      meta: MESES.map(function () { return a.chatMeta; }),
+      formatValue: fmtPctTick, barColor: 'var(--series-6)'
+    });
+    renderForecastChart(el('chartProyCosto'), {
+      categories: MESES_ABBR,
+      actual: pa.costoKg.serie.map(function (s) { return s.actual; }),
+      proyectado: pa.costoKg.serie.map(function (s) { return s.proyectado; }),
+      meta: costoMetaSerie, formatValue: fmtMoneyTick, barColor: 'var(--series-3)'
+    });
+    renderForecastChart(el('chartProyOEE'), {
+      categories: MESES_ABBR,
+      actual: pa.oee.serie.map(function (s) { return s.actual; }),
+      proyectado: pa.oee.serie.map(function (s) { return s.proyectado; }),
+      meta: oeeMetaSerie, formatValue: fmtPctTick, barColor: 'var(--series-2)'
+    });
+  }
+
   function renderInsumos() {
     var data = STATE.data.pptoInsumos || [];
     if (!data.length) {
@@ -2995,14 +3326,22 @@
 
     var maquina = STATE.insumos.maquina;
     var maquinaTxt = maquina ? machineShortLabel(maquina, STATE.data.machineCodes) : 'todas las máquinas';
-    var filtered = maquina ? data.filter(function (r) { return r.ccosto === maquina; }) : data;
-    var rk = insumosRanking(filtered);
+    var mesTxt = STATE.insumos.mes ? STATE.insumos.mes : 'año completo';
+    var filtroTxt = maquinaTxt + ', ' + mesTxt;
 
-    el('insumosGastoCap').textContent = 'consumo × precio promedio — ' + maquinaTxt;
-    el('insumosSobrecostoCap').textContent = 'último precio de compra vs. precio ajustado por IPC — ' + maquinaTxt;
+    // "Mayor gasto por insumo" and the table below it are sourced from the vale
+    // transactions (STATE.engine.insumosPxQ), which carry a real date — that's what
+    // lets both the Máquina AND Mes filters apply here. "Ppto Insumos" (used only for
+    // the sobrecosto/IPC chart) is a period-aggregate reference with no date column at
+    // all, so that one chart stays annual regardless of the Mes filter — noted in its caption.
+    var pxq = STATE.engine.insumosPxQ(STATE.year, { maquina: maquina, mes: STATE.insumos.mes });
+
+    el('insumosGastoCap').textContent = 'gasto real (vales de consumo) — ' + filtroTxt;
+    var rk = insumosRanking(maquina ? data.filter(function (r) { return r.ccosto === maquina; }) : data);
+    el('insumosSobrecostoCap').textContent = 'último precio de compra vs. precio ajustado por IPC — ' + maquinaTxt + ' (referencia anual, no varía por mes)';
 
     renderRankedBarChart(el('chartInsumosGasto'), {
-      items: rk.topGasto.map(function (r) { return { label: r.articulo, value: r.valorEstimado }; }),
+      items: pxq.slice(0, 12).map(function (r) { return { label: r.articulo, value: r.gasto }; }),
       formatValue: fmtMoney, colorVar: 'var(--series-1)'
     });
     renderRankedBarChart(el('chartInsumosSobrecosto'), {
@@ -3010,28 +3349,25 @@
       formatValue: function (v) { return fmtPct(v, 0); }, colorVar: 'var(--series-6)'
     });
 
-    var rows = rk.topGasto.map(function (r) {
-      return { label: r.articulo, cells: [r.consumo, r.valorEstimado, r.ultPrecio, r.precioIPC, r.overrun] };
-    });
-    var html = '<table class="wide"><thead><tr><th>Insumo</th><th>Consumo</th><th>Gasto Estimado</th><th>Últ. Precio</th><th>Precio IPC</th><th>Desv. vs IPC</th></tr></thead><tbody>';
+    var rows = pxq.slice(0, 12);
+    var html = '<table class="wide"><thead><tr><th>Insumo</th><th>Cantidad</th><th>Gasto Real</th><th>Últ. Precio</th><th>Precio IPC</th><th>Desv. vs IPC</th></tr></thead><tbody>';
     rows.forEach(function (r) {
-      html += '<tr><td>' + escapeHtml(r.label) + '</td>' +
-        tdv(r.cells[0], fmtInt) + tdv(r.cells[1], fmtMoney) + tdv(r.cells[2], fmtMoney) + tdv(r.cells[3], fmtMoney) +
-        tdv(r.cells[4], function (v) { return fmtPct(v, 0); }) + '</tr>';
+      html += '<tr><td>' + escapeHtml(r.articulo) + '</td>' +
+        tdv(r.cantidad, fmtInt) + tdv(r.gasto, fmtMoney) + tdv(r.pUltimo, fmtMoney) + tdv(r.precioIPC, fmtMoney) +
+        tdv(r.vsIpc, function (v) { return fmtSigned(v, function (x) { return fmtPct(x, 0); }); }) + '</tr>';
     });
     html += '</tbody></table>';
     el('insumosTable').innerHTML = html;
 
     // Análisis PxQ: primer vs. último precio y efecto precio × cantidad, desde las
     // transacciones de vales (sí tienen fecha, a diferencia de la hoja Ppto Insumos)
-    var mesTxt = STATE.insumos.mes ? STATE.insumos.mes : 'año completo';
-    var pxq = STATE.engine.insumosPxQ(STATE.year, { maquina: maquina, mes: STATE.insumos.mes }).slice(0, 25);
-    el('pxqCap').textContent = pxq.length ?
-      ('Top ' + pxq.length + ' insumos por gasto — ' + maquinaTxt + ', ' + mesTxt +
+    var pxqTop = pxq.slice(0, 25);
+    el('pxqCap').textContent = pxqTop.length ?
+      ('Top ' + pxqTop.length + ' insumos por gasto — ' + filtroTxt +
        '. Efecto precio = (último precio − primer precio) × cantidad: cuánto del gasto se explica por variación de precio y no de consumo.') :
-      ('Sin vales de consumo para este filtro (' + maquinaTxt + ', ' + mesTxt + ')');
+      ('Sin vales de consumo para este filtro (' + filtroTxt + ')');
     var pxqHtml = '<table class="wide"><thead><tr><th>Insumo</th><th>Cantidad</th><th>Gasto</th><th>1er Precio</th><th>Últ. Precio</th><th>Δ Precio</th><th>Efecto Precio ($)</th><th>Precio IPC</th><th>Últ. vs IPC</th></tr></thead><tbody>';
-    pxq.forEach(function (r) {
+    pxqTop.forEach(function (r) {
       pxqHtml += '<tr><td>' + escapeHtml(r.articulo) + '</td>' +
         tdv(r.cantidad, fmtInt) + tdv(r.gasto, fmtMoney) +
         tdv(r.pPrimero, fmtMoney) + tdv(r.pUltimo, fmtMoney) +
@@ -3042,7 +3378,7 @@
         '</tr>';
     });
     pxqHtml += '</tbody></table>';
-    el('pxqTable').innerHTML = pxq.length ? pxqHtml : '';
+    el('pxqTable').innerHTML = pxqTop.length ? pxqHtml : '';
 
     renderCostosCategoria('Aceite y Lubricante', 'chartCostosAceite', 'costosAceiteCap', maquina, maquinaTxt);
     renderCostosCategoria('Insumos de Fábrica', 'chartCostosInsumosFab', 'costosInsumosFabCap', maquina, maquinaTxt);
@@ -3127,6 +3463,12 @@
       items: espKg.map(function (r) { return { label: r.espesor + ' mm', value: r.total }; }),
       formatValue: fmtKgTick, colorVar: 'var(--series-3)'
     });
+
+    el('productosEspDonutCap').textContent = 'participación del kg producido por espesor — ' + filtroTxt;
+    renderDonutChart(el('chartEspesorDonut'), {
+      items: espKg.map(function (r) { return { label: r.espesor + ' mm', value: r.total }; }),
+      formatValue: function (v) { return fmtInt(v) + ' kg'; }
+    });
   }
 
   var SKU_ROW_LIMIT = 300;
@@ -3210,6 +3552,7 @@
     renderInsumos();
     renderProductos(anio);
     renderSkuBuscador();
+    renderProyecciones(anio);
     el('updatedLabel').textContent = 'Developed by Gino Espinosa Morales';
     saveFilters();
   }
@@ -3221,7 +3564,8 @@
     espesor: { title: 'Análisis por Espesor', crumb: 'Mix de producción por espesor' },
     insumos: { title: 'Costos e Insumos', crumb: 'Gasto y variación de precio por insumo' },
     productos: { title: 'Mix de Productos', crumb: 'Producción y chatarra por producto y familia' },
-    sku: { title: 'Buscador SKU', crumb: 'Producción y chatarra por SKU, máquina y mes' }
+    sku: { title: 'Buscador SKU', crumb: 'Producción y chatarra por SKU, máquina y mes' },
+    proyecciones: { title: 'Proyecciones', crumb: 'Cierre de mes y de año proyectado — producción, chatarra, costos y OEE' }
   };
 
   function switchTab(tab) {
@@ -3276,7 +3620,7 @@
       localStorage.setItem(LS_FILTERS, JSON.stringify({
         year: STATE.year, month: STATE.month, machine: STATE.machine,
         sku: STATE.sku, productos: STATE.productos, insumos: STATE.insumos,
-        criticos: STATE.criticos, tab: activeTab
+        criticos: STATE.criticos, proyecciones: STATE.proyecciones, tab: activeTab
       }));
     } catch (e) { /* almacenamiento no disponible — seguir sin persistir */ }
   }
@@ -3303,6 +3647,7 @@
         maquina: maqOk(f.criticos.maquina) ? f.criticos.maquina : null,
         estado: ['critico', 'alerta', 'atencion', 'ok'].indexOf(f.criticos.estado) >= 0 ? f.criticos.estado : null
       };
+      if (f.proyecciones) STATE.proyecciones = { maquina: maqOk(f.proyecciones.maquina) ? f.proyecciones.maquina : null };
       STATE.restored = true; // a saved null machine means the user chose "Todas" — don't re-default it
       return f.tab || null;
     } catch (e) { return null; }
