@@ -15,6 +15,10 @@
   var VALES_CATEGORIAS_NORM = VALES_CATEGORIAS.map(normKey);
 
   var META_CHATARRA_PLANTA = 0.046;
+  // Split de la meta planta en sus dos componentes (máquinas + desorillado Braner),
+  // igual al desglose "Meta Maqu. / Meta Bran." del Excel de referencia (2,70%+1,90%=4,60%).
+  var META_CHATARRA_MAQUINAS = 0.027;
+  var META_CHATARRA_BRANER = 0.019;
 
   // Reference targets seen identically in both sample workbooks' "no borrar"/"Metas"
   // sheets. Some monthly exports (e.g. BD_REPORTE_OPERACIONES.xlsx) don't include that
@@ -959,6 +963,31 @@
       return { produccion: produccion, chatarra: chatarra };
     }
 
+    /* ---- Calidad Planta: chatarra máquinas + desorillado Braner, cada uno vs.
+     * su propia meta (rows "CALIDAD PLANTA" del Excel de referencia) ---- */
+    function calidadPlantaDetalle(anio) {
+      var resumen = resumenPlanta(anio);
+      return resumen.map(function (m) {
+        var realMaq = m.chatarraMaquinasPct;
+        var realBran = m.desorilladoBranerPct;
+        var real = m.pctChatarraPlanta;
+        var metaDinamica = chatarraPorEspesorTarget(anio, m.mes);
+        var metaMaq = metaDinamica != null ? metaDinamica : META_CHATARRA_MAQUINAS;
+        var metaBran = META_CHATARRA_BRANER;
+        var metaTotal = metaMaq + metaBran;
+        var desvMaq = realMaq != null ? metaMaq - realMaq : null;
+        var desvBran = realBran != null ? metaBran - realBran : null;
+        var desvTotal = (real != null) ? metaTotal - real : null;
+        return {
+          mes: m.mes, mesAbbr: m.mesAbbr,
+          real: real, esperado: metaTotal,
+          realMaquinas: realMaq, metaMaquinas: metaMaq, desvMaquinas: desvMaq,
+          realBraner: realBran, metaBraner: metaBran, desvBraner: desvBran,
+          desvTotal: desvTotal, metaEsDinamica: metaDinamica != null
+        };
+      });
+    }
+
     /* ---- Detalle por máquina - mes (rows 108-170) ---- */
     function detalleMes(anio, mesNombre) {
       var mesIdx = MESES.indexOf(mesNombre);
@@ -1733,7 +1762,7 @@
       produccionMensualPorMaquina: produccionMensualPorMaquina, costosCategoria: costosCategoria,
       proyeccionCierre: proyeccionCierre, proyeccionAnalitica: proyeccionAnalitica,
       paretoChatarra: paretoChatarra, paretoProduccion: paretoProduccion,
-      tendenciasPlanta: tendenciasPlanta,
+      tendenciasPlanta: tendenciasPlanta, calidadPlantaDetalle: calidadPlantaDetalle,
       puntosCriticos: puntosCriticos, insumosPxQ: insumosPxQ, insumosMovimiento: insumosMovimiento,
       espesorKgFiltrado: espesorKgFiltrado, espesoresDisponibles: espesoresDisponibles,
       skuBuscador: skuBuscador, skuMonthlyTrend: skuMonthlyTrend, skuArticleMonthlyTrend: skuArticleMonthlyTrend
@@ -2660,6 +2689,131 @@
     });
   }
 
+  function renderTopLineBottomBarChart(container, opts) {
+    // opts: {categories, lines: [{name,color,values}, ...] (1-2, dashed, plotted as-is —
+    //        typically real/esperado, well above zero), bars: [{name,color,values,signed}, ...]
+    //        (1-2, grouped, extend up/down from the zero baseline — typically desviaciones),
+    //        totalLine: {name,color,values} (optional solid line+dots overlaid on the bars,
+    //        e.g. desviación total), formatValue}
+    // Same one-axis-for-everything approach as renderComboChart: legitimate because every
+    // series here shares one unit (%), just at very different magnitudes (lines ~5%, bar
+    // deviations ~±1%) — matches the reference "Calidad Planta" chart's layout exactly.
+    chartUid++;
+    var W = chartWidth(container, 720), H = 300, padL = 10, padR = 12, padT = 20, padB = 26;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var n = opts.categories.length;
+    var bandW = plotW / n;
+    var barCount = opts.bars.length;
+    var groupW = Math.min(bandW * 0.6, 46);
+    var barW = Math.max(6, groupW / barCount - 3);
+
+    var allVals = [];
+    opts.lines.forEach(function (l) { allVals = allVals.concat(l.values.filter(isNum)); });
+    opts.bars.forEach(function (b) { allVals = allVals.concat(b.values.filter(isNum)); });
+    if (opts.totalLine) allVals = allVals.concat(opts.totalLine.values.filter(isNum));
+    var maxV = allVals.length ? Math.max.apply(null, allVals) : 1;
+    var minV = allVals.length ? Math.min(0, Math.min.apply(null, allVals)) : 0;
+    maxV = maxV * 1.15 || 1;
+    minV = minV < 0 ? minV * 1.4 : -maxV * 0.3;
+
+    function y(v) { return padT + plotH - ((v - minV) / (maxV - minV)) * plotH; }
+    var baseline = y(0);
+
+    var gridHtml = '', labelsHtml = '';
+    for (var g = 0; g <= 4; g++) {
+      var v = minV + (maxV - minV) * g / 4;
+      var yy = y(v);
+      gridHtml += '<line class="grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + yy + '" y2="' + yy + '"></line>';
+      labelsHtml += '<text class="axis-label" x="' + padL + '" y="' + (yy - 3) + '">' + opts.formatValue(v, true) + '</text>';
+    }
+
+    function cxOf(i) { return padL + bandW * i + bandW / 2; }
+    var xLabelsHtml = '';
+    var pts = [];
+    opts.categories.forEach(function (cat, i) {
+      xLabelsHtml += '<text class="axis-label" x="' + cxOf(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + cat + '</text>';
+      pts.push({ i: i, cx: cxOf(i), cat: cat });
+    });
+
+    // barras agrupadas alrededor de cada categoría
+    var barsHtml = '', barValueLabelsHtml = '';
+    opts.bars.forEach(function (series, si) {
+      var groupLeft = function (cx) { return cx - groupW / 2 + si * (barW + 3); };
+      series.values.forEach(function (val, i) {
+        if (!isNum(val)) return;
+        var cx = cxOf(i), x0 = groupLeft(cx);
+        var top = Math.min(baseline, y(val)), h = Math.max(1, Math.abs(y(val) - baseline));
+        var color = series.signed ? (val >= 0 ? 'var(--good)' : 'var(--critical)') : series.color;
+        barsHtml += '<rect class="bar" data-series="b' + si + '" data-i="' + i + '" x="' + x0 + '" y="' + top + '" width="' + barW + '" height="' + h + '" rx="2.5" fill="' + color + '"></rect>';
+        var labelY = val >= 0 ? top - 4 : top + h + 11;
+        barValueLabelsHtml += '<text class="value-label" x="' + (x0 + barW / 2) + '" y="' + labelY + '" text-anchor="middle" font-size="9.5">' + opts.formatValue(val) + '</text>';
+        pts[i]['bar' + si] = val;
+      });
+    });
+
+    function linePath(values) {
+      var d = '', started = false;
+      values.forEach(function (v, i) {
+        if (!isNum(v)) { started = false; return; }
+        d += (started ? 'L' : 'M') + cxOf(i) + ',' + y(v);
+        started = true;
+      });
+      return d;
+    }
+    var linesHtml = '';
+    opts.lines.forEach(function (l, li) {
+      linesHtml += '<path d="' + linePath(l.values) + '" fill="none" stroke="' + l.color + '" stroke-width="1.8" stroke-dasharray="5 3" opacity=".9"></path>';
+      l.values.forEach(function (v, i) {
+        if (!isNum(v)) return;
+        linesHtml += '<circle cx="' + cxOf(i) + '" cy="' + y(v) + '" r="2.6" fill="' + l.color + '"></circle>';
+        pts[i]['line' + li] = v;
+      });
+    });
+
+    var totalHtml = '';
+    if (opts.totalLine) {
+      totalHtml += '<path d="' + linePath(opts.totalLine.values) + '" fill="none" stroke="' + opts.totalLine.color + '" stroke-width="2"></path>';
+      opts.totalLine.values.forEach(function (v, i) {
+        if (!isNum(v)) return;
+        totalHtml += '<circle class="bar" data-series="total" data-i="' + i + '" cx="' + cxOf(i) + '" cy="' + y(v) + '" r="3.6" fill="' + opts.totalLine.color + '" stroke="var(--surface-1)" stroke-width="1.5"></circle>';
+        pts[i].total = v;
+      });
+    }
+
+    var legendHtml = '<div class="chart-legend">' +
+      opts.bars.map(function (b) { return '<span class="sw"><span class="dot" style="background:' + (b.signed ? 'var(--good)' : b.color) + '"></span>' + escapeHtml(b.name) + '</span>'; }).join('') +
+      opts.lines.map(function (l) { return '<span class="sw"><span class="dot" style="background:' + l.color + '"></span>' + escapeHtml(l.name) + '</span>'; }).join('') +
+      (opts.totalLine ? '<span class="sw"><span class="dot" style="background:' + opts.totalLine.color + '"></span>' + escapeHtml(opts.totalLine.name) + '</span>' : '') +
+      '</div>';
+
+    var tipId = 'tip' + chartUid;
+    container.innerHTML = '<div class="chart-wrap">' + legendHtml +
+      '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
+      '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
+      gridHtml + labelsHtml + barsHtml + linesHtml + totalHtml + barValueLabelsHtml + xLabelsHtml +
+      '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
+
+    var tip = container.querySelector('#' + tipId);
+    var wrapEl = container.querySelector('.chart-wrap');
+    container.querySelectorAll('[data-i]').forEach(function (elm) {
+      var p = pts[parseInt(elm.getAttribute('data-i'), 10)];
+      if (!p) return;
+      elm.addEventListener('mousemove', function () {
+        var rect = wrapEl.getBoundingClientRect();
+        var scale = rect.width / W;
+        tip.style.left = (p.cx * scale) + 'px';
+        tip.style.top = ((padT + 6) * scale) + 'px';
+        tip.style.opacity = 1;
+        var html = '<strong>' + p.cat + '</strong>';
+        opts.lines.forEach(function (l, li) { if (isNum(p['line' + li])) html += '<br>' + escapeHtml(l.name) + ': ' + opts.formatValue(p['line' + li]); });
+        opts.bars.forEach(function (b, bi) { if (isNum(p['bar' + bi])) html += '<br>' + escapeHtml(b.name) + ': ' + opts.formatValue(p['bar' + bi]); });
+        if (opts.totalLine && isNum(p.total)) html += '<br>' + escapeHtml(opts.totalLine.name) + ': ' + opts.formatValue(p.total);
+        tip.innerHTML = html;
+      });
+      elm.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
+    });
+  }
+
   function renderDeviationChart(container, opts) {
     // opts: {categories, values, formatValue, seriesLabel, goodIsPositive}
     chartUid++;
@@ -2796,7 +2950,8 @@
     productos: { maquina: null, mes: null, espesor: null },
     insumos: { maquina: null, mes: null },
     criticos: { mes: null, maquina: null, estado: null },
-    proyecciones: { maquina: null }
+    proyecciones: { maquina: null },
+    oeeCalidad: { maquina: null, mes: null }
   };
 
   function el(id) { return document.getElementById(id); }
@@ -2935,6 +3090,92 @@
       { label: 'Desviación', unit: '%', values: ppto.chatarra.map(function (m) { return m.desv; }), fmt: function (v) { return fmtPct(v, 2); } }
     ];
     renderMonthlyTable(el('pptoTable'), 'Producción vs. Presupuesto — ' + anio, rows);
+  }
+
+  function renderOeeCalidad(anio) {
+    var maquina = STATE.oeeCalidad.maquina;
+    var mesFiltro = STATE.oeeCalidad.mes;
+    var maquinaLabel = maquina ? machineShortLabel(maquina, STATE.data.machineCodes) : 'Planta';
+    var categories, oeeReal, oeeMeta, calReal, calEsperado, calDesvMaq, calDesvBran, calDesvTotal, hayDesglose, hayMetaDinamica;
+
+    if (!maquina) {
+      var resumen = STATE.engine.resumenPlanta(anio);
+      categories = resumen.map(function (m) { return m.mesAbbr; });
+      oeeReal = resumen.map(function (m) { return m.oeeMensual; });
+      oeeMeta = resumen.map(function (m) { return STATE.engine.oeeMetaVal('OEE Planta', m.mes); });
+      var cal = STATE.engine.calidadPlantaDetalle(anio);
+      calReal = cal.map(function (m) { return m.real; });
+      calEsperado = cal.map(function (m) { return m.esperado; });
+      calDesvMaq = cal.map(function (m) { return m.desvMaquinas; });
+      calDesvBran = cal.map(function (m) { return m.desvBraner; });
+      calDesvTotal = cal.map(function (m) { return m.desvTotal; });
+      hayMetaDinamica = cal.some(function (m) { return m.metaEsDinamica; });
+      hayDesglose = true;
+    } else {
+      var det = STATE.engine.detalleAnio(anio, maquina);
+      categories = det.meses.map(function (m) { return m.mesAbbr; });
+      oeeReal = det.meses.map(function (m) { return m.oee; });
+      oeeMeta = det.meses.map(function (m) { return m.oeeMeta; });
+      calReal = det.meses.map(function (m) { return m.chatarraPct; });
+      calEsperado = det.meses.map(function (m) { return m.metaChatarraEstandar; });
+      calDesvTotal = det.meses.map(function (m) { return m.desviacionChatarraEstandar; });
+      hayDesglose = false;
+    }
+    var oeeDesv = oeeReal.map(function (v, i) { return (isNum(v) && isNum(oeeMeta[i])) ? v - oeeMeta[i] : null; });
+
+    el('oeeCalidadOeeCap').textContent = 'OEE real vs. meta — ' + maquinaLabel;
+    renderTopLineBottomBarChart(el('chartOeeCalidadOEE'), {
+      categories: categories,
+      lines: [
+        { name: 'OEE Real', color: 'var(--series-2)', values: oeeReal },
+        { name: 'OEE Meta', color: 'var(--series-5)', values: oeeMeta }
+      ],
+      bars: [{ name: 'Desviación OEE', signed: true, values: oeeDesv }],
+      formatValue: fmtPctTick
+    });
+
+    if (hayDesglose) {
+      el('oeeCalidadCalCap').textContent = hayMetaDinamica ?
+        'Calidad Planta: chatarra máquinas + desorillado Braner vs. meta dinámica por espesor' :
+        'Calidad Planta: chatarra máquinas + desorillado Braner vs. meta (4,6% fijo: 2,70% máquinas + 1,90% Braner)';
+      renderTopLineBottomBarChart(el('chartOeeCalidadCalidad'), {
+        categories: categories,
+        lines: [
+          { name: 'Calidad Planta Real', color: 'var(--series-1)', values: calReal },
+          { name: 'Calidad Planta Esperado', color: 'var(--series-6)', values: calEsperado }
+        ],
+        bars: [
+          { name: 'Desviación Máquinas', color: 'var(--series-3)', values: calDesvMaq },
+          { name: 'Desviación Braner', color: 'var(--series-7)', values: calDesvBran }
+        ],
+        totalLine: { name: 'Desviación Total', color: 'var(--series-8)', values: calDesvTotal },
+        formatValue: fmtPctTick
+      });
+    } else {
+      el('oeeCalidadCalCap').textContent = 'Chatarra ' + maquinaLabel + ' vs. meta estándar (el desorillado es un concepto de planta — no se puede atribuir a una máquina individual)';
+      renderTopLineBottomBarChart(el('chartOeeCalidadCalidad'), {
+        categories: categories,
+        lines: [
+          { name: 'Chatarra Real', color: 'var(--series-1)', values: calReal },
+          { name: 'Meta', color: 'var(--series-6)', values: calEsperado }
+        ],
+        bars: [{ name: 'Desviación', signed: true, values: calDesvTotal }],
+        formatValue: fmtPctTick
+      });
+    }
+
+    var mesCapEl = el('oeeCalidadMesDetalle');
+    if (mesFiltro) {
+      var idx = MESES.indexOf(mesFiltro);
+      mesCapEl.style.display = 'block';
+      mesCapEl.innerHTML = '<strong>' + mesFiltro + '</strong> — OEE real ' + fmtPct(oeeReal[idx], 1) + ' vs. meta ' + fmtPct(oeeMeta[idx], 1) +
+        ' (desv. ' + fmtSigned(oeeDesv[idx], function (v) { return fmtPct(v, 1); }) + ')' +
+        ' &nbsp;·&nbsp; Calidad Planta real ' + fmtPct(calReal[idx], 2) + ' vs. esperado ' + fmtPct(calEsperado[idx], 2) +
+        ' (desv. ' + fmtSigned(calDesvTotal[idx], function (v) { return fmtPct(v, 2); }) + ')';
+    } else {
+      mesCapEl.style.display = 'none';
+      mesCapEl.innerHTML = '';
+    }
   }
 
   function renderDetalleMes(anio, mesNombre) {
@@ -3219,6 +3460,16 @@
     renderSegmented('proyeccionesMachineSeg', skuMachineOptions, STATE.proyecciones.maquina || '', function (val) {
       STATE.proyecciones.maquina = val || null;
       renderProyecciones(STATE.year);
+    });
+
+    renderSegmented('oeeCalidadMachineSeg', skuMachineOptions, STATE.oeeCalidad.maquina || '', function (val) {
+      STATE.oeeCalidad.maquina = val || null;
+      renderOeeCalidad(STATE.year);
+    });
+    var oeeCalidadMonthOptions = [{ value: '', label: 'Todos' }].concat(MESES.map(function (m, i) { return { value: m, label: MESES_ABBR[i] }; }));
+    renderSegmented('oeeCalidadMonthSeg', oeeCalidadMonthOptions, STATE.oeeCalidad.mes || '', function (val) {
+      STATE.oeeCalidad.mes = val || null;
+      renderOeeCalidad(STATE.year);
     });
   }
 
@@ -3717,6 +3968,7 @@
     renderProductos(anio);
     renderSkuBuscador();
     renderProyecciones(anio);
+    renderOeeCalidad(anio);
     el('updatedLabel').textContent = 'Developed by Gino Espinosa Morales';
     saveFilters();
   }
@@ -3729,7 +3981,8 @@
     insumos: { title: 'Costos e Insumos', crumb: 'Gasto y variación de precio por insumo' },
     productos: { title: 'Mix de Productos', crumb: 'Producción y chatarra por producto y familia' },
     sku: { title: 'Buscador SKU', crumb: 'Producción y chatarra por SKU, máquina y mes' },
-    proyecciones: { title: 'Proyecciones', crumb: 'Cierre de mes y de año proyectado — producción, chatarra, costos y OEE' }
+    proyecciones: { title: 'Proyecciones', crumb: 'Cierre de mes y de año proyectado — producción, chatarra, costos y OEE' },
+    oeeCalidad: { title: 'OEE y Calidad Planta', crumb: 'Tendencia mensual de OEE y Calidad Planta vs. meta, por máquina y mes' }
   };
 
   function switchTab(tab) {
@@ -3784,7 +4037,7 @@
       localStorage.setItem(LS_FILTERS, JSON.stringify({
         year: STATE.year, month: STATE.month, machine: STATE.machine,
         sku: STATE.sku, productos: STATE.productos, insumos: STATE.insumos,
-        criticos: STATE.criticos, proyecciones: STATE.proyecciones, tab: activeTab
+        criticos: STATE.criticos, proyecciones: STATE.proyecciones, oeeCalidad: STATE.oeeCalidad, tab: activeTab
       }));
     } catch (e) { /* almacenamiento no disponible — seguir sin persistir */ }
   }
@@ -3812,6 +4065,10 @@
         estado: ['critico', 'alerta', 'atencion', 'ok'].indexOf(f.criticos.estado) >= 0 ? f.criticos.estado : null
       };
       if (f.proyecciones) STATE.proyecciones = { maquina: maqOk(f.proyecciones.maquina) ? f.proyecciones.maquina : null };
+      if (f.oeeCalidad) STATE.oeeCalidad = {
+        maquina: maqOk(f.oeeCalidad.maquina) ? f.oeeCalidad.maquina : null,
+        mes: MESES.indexOf(f.oeeCalidad.mes) >= 0 ? f.oeeCalidad.mes : null
+      };
       STATE.restored = true; // a saved null machine means the user chose "Todas" — don't re-default it
       return f.tab || null;
     } catch (e) { return null; }
