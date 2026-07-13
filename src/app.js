@@ -938,6 +938,12 @@
       var metaChatarraCalculada = denCalc ? numCalc / denCalc : null;
       var desviacionChatarraCalculada = (metaChatarraCalculada != null && chatarraPlantaPct != null) ?
         metaChatarraCalculada - chatarraPlantaPct : null;
+      // meta calculada total = componente de máquinas (arriba) + el estándar de
+      // Braner/desorillado (no tiene tabla por espesor propia) — comparable directo
+      // contra "Chatarra Planta", que también es la suma de ambos componentes.
+      var metaChatarraCalculadaTotal = metaChatarraCalculada != null ? metaChatarraCalculada + META_CHATARRA_BRANER : null;
+      var desviacionChatarraCalculadaTotal = (metaChatarraCalculadaTotal != null && chatarraPlantaPct != null) ?
+        metaChatarraCalculadaTotal - chatarraPlantaPct : null;
 
       var numOEE = 0, denOEE = 0;
       resumen.forEach(function (m) {
@@ -952,7 +958,8 @@
         oeePlantaGlobal: oeePlantaGlobal, kilosFabricados: kilosFabricados, chatarraKg: chatarraKgTotal,
         chatarraMaquinasPct: chatarraMaquinasPct, chatarraBranerPct: chatarraBranerPct,
         chatarraPlantaPct: chatarraPlantaPct, metaChatarra: META_CHATARRA_PLANTA, desviacionChatarra: desviacionChatarra,
-        metaChatarraCalculada: metaChatarraCalculada, desviacionChatarraCalculada: desviacionChatarraCalculada
+        metaChatarraCalculada: metaChatarraCalculada, desviacionChatarraCalculada: desviacionChatarraCalculada,
+        metaChatarraCalculadaTotal: metaChatarraCalculadaTotal, desviacionChatarraCalculadaTotal: desviacionChatarraCalculadaTotal
       };
     }
 
@@ -1005,11 +1012,22 @@
         // la meta comparada también tiene que sumar sus dos componentes — no solo
         // la meta calculada de máquinas (que por sí sola solo cubre el rechazo por
         // espesor, nunca el desorillado). Mismo criterio que calidadPlantaDetalle.
+        // Se exponen las dos metas (administrativa fija y calculada) con su propia
+        // desviación cada una; "meta"/"desv" quedan apuntando a la calculada porque
+        // es la que se grafica (la administrativa se muestra solo en la tabla).
         var metaDinamica = chatarraPorEspesorTarget(anio, m.mes);
         var metaMaq = metaDinamica != null ? metaDinamica : META_CHATARRA_MAQUINAS;
-        var meta = pct == null ? null : (metaMaq + META_CHATARRA_BRANER);
-        var desv = (meta != null && pct != null) ? meta - pct : null;
-        return { mes: m.mes, mesAbbr: m.mesAbbr, real: real, pct: pct, meta: meta, desv: desv, metaEsDinamica: metaDinamica != null };
+        var metaCalculada = pct == null ? null : (metaMaq + META_CHATARRA_BRANER);
+        var metaAdministrativa = pct == null ? null : META_CHATARRA_PLANTA;
+        var desvCalculada = (metaCalculada != null && pct != null) ? metaCalculada - pct : null;
+        var desvAdministrativa = (metaAdministrativa != null && pct != null) ? metaAdministrativa - pct : null;
+        return {
+          mes: m.mes, mesAbbr: m.mesAbbr, real: real, pct: pct,
+          meta: metaCalculada, desv: desvCalculada,
+          metaCalculada: metaCalculada, desvCalculada: desvCalculada,
+          metaAdministrativa: metaAdministrativa, desvAdministrativa: desvAdministrativa,
+          metaEsDinamica: metaDinamica != null
+        };
       });
       return { produccion: produccion, chatarra: chatarra };
     }
@@ -3082,12 +3100,19 @@
       { label: 'Chatarra Braner', value: fmtPct(kpi.chatarraBranerPct, 2), icon: ICON_LAYERS, accent: 'var(--series-7)' },
       { label: 'Chatarra Planta', value: fmtPct(kpi.chatarraPlantaPct, 2), icon: ICON_TARGET, accent: 'var(--series-2)' },
       { label: 'Meta Administrativa', value: fmtPct(kpi.metaChatarra, 1), icon: ICON_TARGET, accent: 'var(--series-4)' },
-      { label: 'Meta Calculada', value: fmtPct(kpi.metaChatarraCalculada, 2), icon: ICON_TARGET, accent: 'var(--series-6)' },
       {
-        label: 'Desviación', value: fmtSigned(kpi.desviacionChatarra, function (v) { return fmtPct(v, 2); }),
+        label: 'Desviación Administrativa', value: fmtSigned(kpi.desviacionChatarra, function (v) { return fmtPct(v, 2); }),
         icon: ICON_TREND, accent: 'var(--series-3)',
         deltaClass: deltaClass(kpi.desviacionChatarra, true),
         deltaText: kpi.desviacionChatarra == null ? '' : (kpi.desviacionChatarra >= 0 ? 'sobre la meta' : 'bajo la meta')
+      },
+      { label: 'Meta Calculada Máquinas', value: fmtPct(kpi.metaChatarraCalculada, 2), icon: ICON_TARGET, accent: 'var(--series-6)' },
+      { label: 'Meta Calculada', value: fmtPct(kpi.metaChatarraCalculadaTotal, 2), icon: ICON_TARGET, accent: 'var(--series-6)' },
+      {
+        label: 'Desviación Calculada', value: fmtSigned(kpi.desviacionChatarraCalculadaTotal, function (v) { return fmtPct(v, 2); }),
+        icon: ICON_TREND, accent: 'var(--series-3)',
+        deltaClass: deltaClass(kpi.desviacionChatarraCalculadaTotal, true),
+        deltaText: kpi.desviacionChatarraCalculadaTotal == null ? '' : (kpi.desviacionChatarraCalculadaTotal >= 0 ? 'sobre la meta' : 'bajo la meta')
       }
     ];
     el('kpiGrid').innerHTML = tiles.map(function (t) {
@@ -3183,8 +3208,10 @@
       { label: 'Desviación Ppto vs Real', unit: '%', values: ppto.produccion.map(function (m) { return m.desvPct; }), fmt: function (v) { return fmtPct(v, 1); } },
       { label: 'Total Chatarra Real', unit: 'kg', values: ppto.chatarra.map(function (m) { return m.real; }), total: true },
       { label: 'Chatarra Planta', unit: '%', values: ppto.chatarra.map(function (m) { return m.pct; }), fmt: function (v) { return fmtPct(v, 2); } },
-      { label: 'Meta', unit: '%', values: ppto.chatarra.map(function (m) { return m.meta; }), fmt: function (v) { return fmtPct(v, 1); } },
-      { label: 'Desviación', unit: '%', values: ppto.chatarra.map(function (m) { return m.desv; }), fmt: function (v) { return fmtPct(v, 2); } }
+      { label: 'Meta Administrativa', unit: '%', values: ppto.chatarra.map(function (m) { return m.metaAdministrativa; }), fmt: function (v) { return fmtPct(v, 1); } },
+      { label: 'Desviación Administrativa', unit: '%', values: ppto.chatarra.map(function (m) { return m.desvAdministrativa; }), fmt: function (v) { return fmtPct(v, 2); } },
+      { label: 'Meta Calculada', unit: '%', values: ppto.chatarra.map(function (m) { return m.metaCalculada; }), fmt: function (v) { return fmtPct(v, 1); } },
+      { label: 'Desviación Calculada', unit: '%', values: ppto.chatarra.map(function (m) { return m.desvCalculada; }), fmt: function (v) { return fmtPct(v, 2); } }
     ];
     renderMonthlyTable(el('pptoTable'), 'Producción vs. Presupuesto — ' + anio, rows);
   }

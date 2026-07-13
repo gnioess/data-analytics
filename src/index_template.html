@@ -372,6 +372,20 @@ html[data-build="local"] #driveRefreshBtn,html[data-build="local"] #driveRefresh
 
 /* ---------- KPI tiles ---------- */
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:26px;}
+/* Resumen's KPI row grew from 7 to 11 tiles (meta/desviación administrativa +
+   calculada, side by side) — a grid with auto-fit columns stretches leftover
+   tiles on the last row across invisible full-width tracks, leaving a big empty
+   gap. Flex-wrap with a smaller basis lets tiles wrap at their own size and
+   pack more per row instead. */
+#kpiGrid{display:flex;flex-wrap:wrap;gap:10px;}
+#kpiGrid .tile{flex:1 1 155px;min-width:155px;padding:13px 14px 12px;}
+#kpiGrid .tile .icon{width:26px;height:26px;flex:0 0 26px;}
+#kpiGrid .tile .icon svg{width:14px;height:14px;}
+#kpiGrid .tile .tile-top{margin-bottom:9px;}
+#kpiGrid .tile .label{font-size:10px;}
+#kpiGrid .tile .value{font-size:19px;}
+#kpiGrid .tile .delta{font-size:11px;}
+@media (max-width:520px){#kpiGrid .tile{flex:1 1 130px;min-width:130px;}}
 .tile{
   position:relative;background:var(--surface-1);border:1px solid var(--border);border-radius:14px;
   padding:16px 16px 15px;box-shadow:var(--card-shadow);overflow:hidden;
