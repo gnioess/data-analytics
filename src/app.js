@@ -3261,14 +3261,6 @@
         icon: ICON_TREND, accent: 'var(--series-3)',
         deltaClass: deltaClass(kpi.desviacionChatarra, true),
         deltaText: kpi.desviacionChatarra == null ? '' : (kpi.desviacionChatarra >= 0 ? 'sobre la meta' : 'bajo la meta')
-      },
-      { label: 'Meta Calculada Máquinas', value: fmtPct(kpi.metaChatarraCalculada, 2), icon: ICON_TARGET, accent: 'var(--series-6)' },
-      { label: 'Meta Calculada', value: fmtPct(kpi.metaChatarraCalculadaTotal, 2), icon: ICON_TARGET, accent: 'var(--series-6)' },
-      {
-        label: 'Desviación Calculada', value: fmtSigned(kpi.desviacionChatarraCalculadaTotal, function (v) { return fmtPct(v, 2); }),
-        icon: ICON_TREND, accent: 'var(--series-3)',
-        deltaClass: deltaClass(kpi.desviacionChatarraCalculadaTotal, true),
-        deltaText: kpi.desviacionChatarraCalculadaTotal == null ? '' : (kpi.desviacionChatarraCalculadaTotal >= 0 ? 'sobre la meta' : 'bajo la meta')
       }
     ];
     if (kpi.oeeMetaPrograma != null) {
@@ -3280,12 +3272,30 @@
         deltaText: kpi.desviacionOeePrograma == null ? '' : (kpi.desviacionOeePrograma >= 0 ? 'sobre la meta' : 'bajo la meta')
       });
     }
-    el('kpiGrid').innerHTML = tiles.map(function (t) {
-      return '<div class="tile" style="--accent:' + t.accent + '">' +
-        '<div class="tile-top"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + t.icon + '</svg></span></div>' +
-        '<div class="label">' + t.label + '</div><div class="value">' + t.value + '</div>' +
-        (t.deltaClass ? '<div class="delta ' + t.deltaClass + '">' + (t.deltaText || '') + '</div>' : '') + '</div>';
-    }).join('');
+    // fila secundaria: a diferencia de las metas de arriba (fijas o promedio anual
+    // completo), esta meta se recalcula según el mix real de espesores producido
+    // — se va ajustando mes a mes con el año, así que se muestra aparte y más chica
+    var tilesCalc = [
+      { label: 'Meta Calculada Máquinas', value: fmtPct(kpi.metaChatarraCalculada, 2), icon: ICON_TARGET, accent: 'var(--series-6)' },
+      { label: 'Meta Calculada', value: fmtPct(kpi.metaChatarraCalculadaTotal, 2), icon: ICON_TARGET, accent: 'var(--series-6)' },
+      {
+        label: 'Desviación Calculada', value: fmtSigned(kpi.desviacionChatarraCalculadaTotal, function (v) { return fmtPct(v, 2); }),
+        icon: ICON_TREND, accent: 'var(--series-3)',
+        deltaClass: deltaClass(kpi.desviacionChatarraCalculadaTotal, true),
+        deltaText: kpi.desviacionChatarraCalculadaTotal == null ? '' : (kpi.desviacionChatarraCalculadaTotal >= 0 ? 'sobre la meta' : 'bajo la meta')
+      }
+    ];
+    function tilesHtml(list) {
+      return list.map(function (t) {
+        return '<div class="tile" style="--accent:' + t.accent + '">' +
+          '<div class="tile-top"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + t.icon + '</svg></span></div>' +
+          '<div class="label">' + t.label + '</div><div class="value">' + t.value + '</div>' +
+          (t.deltaClass ? '<div class="delta ' + t.deltaClass + '">' + (t.deltaText || '') + '</div>' : '') + '</div>';
+      }).join('');
+    }
+    el('kpiGrid').innerHTML = tilesHtml(tiles);
+    el('kpiGridCalc').innerHTML = tilesHtml(tilesCalc);
+    el('kpiGridCalcCap').textContent = 'Meta calculada según el mix de espesores producido en el año a la fecha (se ajusta mes a mes, no es un valor fijo)';
   }
 
   function renderResumen(anio) {
