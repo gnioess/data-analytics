@@ -4284,6 +4284,11 @@
   function driveSetBusy(busy, ctx) {
     var btn = el('driveConnectBtn'); if (btn) { btn.disabled = busy; btn.classList.toggle('loading', busy); }
     var rbtn = el('driveRefreshBtn'); if (rbtn) { rbtn.disabled = busy; rbtn.classList.toggle('loading', busy); }
+    // el ícono chico que se convierte en spinner es fácil de pasar por alto en la
+    // barra lateral — el texto del botón también cambia para que quede claro que
+    // está trabajando y no solo "no hizo nada"
+    var rlabel = el('driveRefreshLabel');
+    if (rlabel) rlabel.textContent = busy ? 'Actualizando…' : 'Actualizar desde Drive';
     // el spinner grande solo vive en la pantalla inicial (dzScreen) — el pequeño
     // dentro del botón ya es suficiente para "Actualizar desde Drive" en el sidebar
     if (ctx !== 'side') { var big = el('dzBigLoading'); if (big) big.classList.toggle('show', busy); }
