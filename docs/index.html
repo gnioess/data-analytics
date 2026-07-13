@@ -4719,14 +4719,16 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var pct1 = function (v) { return fmtPct(v, 1); };
     // soft dashed rule between the Chatarra / OEE / Costo-por-kg column groups
     var html = '<table class="wide"><thead><tr><th>Máquina</th>' +
-      '<th>Chatarra</th><th>Meta Admin.</th><th>Meta Calc.</th><th>Desv.</th><th>Estado</th>' +
+      '<th>Chatarra</th><th>Meta Admin.</th><th>Desv. Admin.</th><th>Meta Calc.</th><th>Desv. Calc.</th><th>Estado</th>' +
       '<th class="group-sep">OEE</th><th>Meta</th><th>Desv.</th><th>Estado</th>' +
       '<th class="group-sep">Costo/kg</th><th>Meta</th><th>Desv.</th><th>Estado</th></tr></thead><tbody>';
     rows.forEach(function (r) {
       html += '<tr>' +
         '<td>' + escapeHtml(machineShortLabel(r.maquina, STATE.data.machineCodes)) + ' <span class="subtle">' + escapeHtml(r.maquina) + '</span></td>' +
-        tdv(r.chatarraPct, pct2) + tdv(r.metaAdministrativa, pct2) + tdv(r.metaCalculada, pct2) +
-        desvTd(r.chatarraPct, r.metaChatarraEstandar, true, pct2) +
+        tdv(r.chatarraPct, pct2) + tdv(r.metaAdministrativa, pct2) +
+        desvTd(r.chatarraPct, r.metaAdministrativa, true, pct2) +
+        tdv(r.metaCalculada, pct2) +
+        desvTd(r.chatarraPct, r.metaCalculada, true, pct2) +
         '<td>' + pill(r.chatarraEstado) + '</td>' +
         tdv(r.oee, pct1, 'group-sep') + tdv(r.oeeMeta, pct1) +
         desvTd(r.oee, r.oeeMeta, false, pct1) +
