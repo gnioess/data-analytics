@@ -2708,10 +2708,17 @@
       return d;
     }
     var metaHtml = '<path d="' + linePath(opts.metaValues) + '" fill="none" stroke="var(--text-primary)" stroke-width="1.8" stroke-dasharray="5 3" opacity=".8"></path>';
+    var lineValueLabelsHtml = '';
+    opts.metaValues.forEach(function (v, i) {
+      if (!isNum(v)) return;
+      metaHtml += '<circle cx="' + cxOf(i) + '" cy="' + y(v) + '" r="2.6" fill="var(--text-primary)"></circle>';
+      lineValueLabelsHtml += '<text class="value-label" x="' + cxOf(i) + '" y="' + (y(v) - 8) + '" text-anchor="middle" font-size="9.5" fill="var(--text-primary)">' + opts.formatValue(v) + '</text>';
+    });
     var desvHtml = '<path d="' + linePath(opts.desvValues) + '" fill="none" stroke="var(--series-8)" stroke-width="2"></path>';
     opts.desvValues.forEach(function (v, i) {
       if (!isNum(v)) return;
       desvHtml += '<circle class="bar" data-i="' + i + '" cx="' + cxOf(i) + '" cy="' + y(v) + '" r="3.6" fill="var(--series-8)" stroke="var(--surface-1)" stroke-width="1.5"></circle>';
+      lineValueLabelsHtml += '<text class="value-label" x="' + cxOf(i) + '" y="' + (y(v) + 14) + '" text-anchor="middle" font-size="9.5" fill="var(--series-8)">' + opts.formatValue(v) + '</text>';
     });
 
     var legendHtml = '<div class="chart-legend">' +
@@ -2723,7 +2730,7 @@
     container.innerHTML = '<div class="chart-wrap">' + legendHtml +
       '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
       '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
-      gridHtml + labelsHtml + barsHtml + metaHtml + desvHtml + valueLabelsHtml + xLabelsHtml +
+      gridHtml + labelsHtml + barsHtml + metaHtml + desvHtml + valueLabelsHtml + lineValueLabelsHtml + xLabelsHtml +
       '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
 
     var tip = container.querySelector('#' + tipId);
