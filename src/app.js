@@ -842,17 +842,6 @@
       var v = D.metas.chatarraMeta[maquina];
       return isNum(v) ? v : null;
     }
-    // La meta "oficial" por máquina es la calculada por mix de espesor producido ese
-    // mes (chatarraPorEspesorTarget, ponderada por kilos reales) — la meta estándar
-    // fija (definida por gerencia) solo se usa como respaldo cuando no hay tabla de
-    // rechazo o el mes no tiene producción con espesor para calcularla.
-    function chatarraMetaValue(anio, mesNombre, maquina) {
-      var calc = chatarraPorEspesorTarget(anio, mesNombre, maquina);
-      return calc != null ? calc : chatarraMetaEstandarVal(maquina);
-    }
-    function chatarraMetaEsCalculada(anio, mesNombre, maquina) {
-      return chatarraPorEspesorTarget(anio, mesNombre, maquina) != null;
-    }
 
     var groupFilter = inSet(D.groupMachines);
 
@@ -913,6 +902,20 @@
         (chatarraMaquinasPct || 0) + (chatarraBranerPct || 0);
       var desviacionChatarra = chatarraPlantaPct == null ? null : META_CHATARRA_PLANTA - chatarraPlantaPct;
 
+      // meta calculada anual: promedio de la meta por espesor de cada mes, ponderado
+      // por kg producidos ese mes (mismo criterio que el OEE ponderado más abajo)
+      var numCalc = 0, denCalc = 0;
+      resumen.forEach(function (m) {
+        var calc = chatarraPorEspesorTarget(anio, m.mes);
+        if (isNum(calc)) {
+          var w = (m.totalProduccion || 0) + (m.totalChatarraReal || 0);
+          numCalc += calc * w; denCalc += w;
+        }
+      });
+      var metaChatarraCalculada = denCalc ? numCalc / denCalc : null;
+      var desviacionChatarraCalculada = (metaChatarraCalculada != null && chatarraPlantaPct != null) ?
+        metaChatarraCalculada - chatarraPlantaPct : null;
+
       var numOEE = 0, denOEE = 0;
       resumen.forEach(function (m) {
         if (isNum(m.oeeMensual)) {
@@ -925,7 +928,8 @@
       return {
         oeePlantaGlobal: oeePlantaGlobal, kilosFabricados: kilosFabricados, chatarraKg: chatarraKgTotal,
         chatarraMaquinasPct: chatarraMaquinasPct, chatarraBranerPct: chatarraBranerPct,
-        chatarraPlantaPct: chatarraPlantaPct, metaChatarra: META_CHATARRA_PLANTA, desviacionChatarra: desviacionChatarra
+        chatarraPlantaPct: chatarraPlantaPct, metaChatarra: META_CHATARRA_PLANTA, desviacionChatarra: desviacionChatarra,
+        metaChatarraCalculada: metaChatarraCalculada, desviacionChatarraCalculada: desviacionChatarraCalculada
       };
     }
 
@@ -1036,8 +1040,10 @@
           chat = chatarraKg(anio, mesN, function (n) { return n === maq; });
         }
         var chatPct = ratio(chat, sum([prodEst, chat].filter(isNum)));
-        var metaChatEst = (isBraner || prodEst == null) ? null : chatarraMetaValue(anio, mesNombre, maq);
-        var metaChatEsCalc = (isBraner || prodEst == null) ? false : chatarraMetaEsCalculada(anio, mesNombre, maq);
+        var metaAdmin = (isBraner || prodEst == null) ? null : chatarraMetaEstandarVal(maq);
+        var metaCalc = (isBraner || prodEst == null) ? null : chatarraPorEspesorTarget(anio, mesNombre, maq);
+        var metaChatEst = metaCalc != null ? metaCalc : metaAdmin;
+        var metaChatEsCalc = metaCalc != null;
         var desvChatEst = (metaChatEst != null && chatPct != null) ? metaChatEst - chatPct : null;
 
         var valorVales = valesValor(maq, anio, mesN);
@@ -1061,6 +1067,7 @@
           maquina: maq, isBraner: isBraner,
           prodEstandar: prodEst, metrosLineales: ml, factor: factor, unidades: unidades,
           chatarra: chat, chatarraPct: chatPct, metaChatarraEstandar: metaChatEst, metaChatarraEsCalculada: metaChatEsCalc, desviacionChatarraEstandar: desvChatEst,
+          metaAdministrativa: metaAdmin, metaCalculada: metaCalc,
           valorVales: valorVales, costoPorMetro: costoPorM, costoPorKilo: costoPorKg, metaPresupuesto: metaPresupKg, desviacionCosto: desvCosto,
           disponibilidad: disp, calidad: cal, ritmo: ritmo, oee: oeeM, oeeMeta: oeeMeta, desviacionOEE: desvOEE,
           horasAtraso: horas
@@ -1094,8 +1101,10 @@
         var unidades = unidadesFabricadasSingle(anio, mesN, maquina);
         var chat = chatarraKg(anio, mesN, function (n) { return n === maquina; });
         var chatPct = ratio(chat, sum([prodEst, chat].filter(isNum)));
-        var metaChatEst = prodEst == null ? null : chatarraMetaValue(anio, mesNombre, maquina);
-        var metaChatEsCalc = prodEst == null ? false : chatarraMetaEsCalculada(anio, mesNombre, maquina);
+        var metaAdmin = prodEst == null ? null : chatarraMetaEstandarVal(maquina);
+        var metaCalc = prodEst == null ? null : chatarraPorEspesorTarget(anio, mesNombre, maquina);
+        var metaChatEst = metaCalc != null ? metaCalc : metaAdmin;
+        var metaChatEsCalc = metaCalc != null;
         var desvChatEst = (metaChatEst != null && chatPct != null) ? metaChatEst - chatPct : null;
 
         var valorVales = valesValor(maquina, anio, mesN);
@@ -1122,6 +1131,7 @@
           prodEstandar: prodEst, pptoProduccion: pptoProdVal(maquina, mesNombre),
           metrosLineales: ml, factor: factor, unidades: unidades,
           chatarra: chat, chatarraPct: chatPct, metaChatarraEstandar: metaChatEst, metaChatarraEsCalculada: metaChatEsCalc, desviacionChatarraEstandar: desvChatEst,
+          metaAdministrativa: metaAdmin, metaCalculada: metaCalc,
           valorVales: valorVales, costoPorMetro: costoPorM, costoPorKilo: costoPorKg, metaPresupuesto: metaPresupKg, desviacionCosto: desvCosto,
           disponibilidad: disp, calidad: cal, ritmo: ritmo, oee: oeeM, oeeMeta: oeeMeta, desviacionOEE: desvOEE,
           horasAtraso: horas
@@ -1174,6 +1184,7 @@
         return {
           maquina: c.maquina, isBraner: c.isBraner,
           chatarraPct: c.chatarraPct, metaChatarraEstandar: c.metaChatarraEstandar,
+          metaAdministrativa: c.metaAdministrativa, metaCalculada: c.metaCalculada,
           chatarraEstado: estado(c.chatarraPct, c.metaChatarraEstandar, false),
           oee: c.oee, oeeMeta: c.oeeMeta,
           oeeEstado: estado(c.oee, c.oeeMeta, true),
@@ -3010,7 +3021,8 @@
       { label: 'Chatarra Máquinas', value: fmtPct(kpi.chatarraMaquinasPct, 2), icon: ICON_GEAR, accent: 'var(--series-8)' },
       { label: 'Chatarra Braner', value: fmtPct(kpi.chatarraBranerPct, 2), icon: ICON_LAYERS, accent: 'var(--series-7)' },
       { label: 'Chatarra Planta', value: fmtPct(kpi.chatarraPlantaPct, 2), icon: ICON_TARGET, accent: 'var(--series-2)' },
-      { label: 'Meta Chatarra', value: fmtPct(kpi.metaChatarra, 1), icon: ICON_TARGET, accent: 'var(--series-4)' },
+      { label: 'Meta Administrativa', value: fmtPct(kpi.metaChatarra, 1), icon: ICON_TARGET, accent: 'var(--series-4)' },
+      { label: 'Meta Calculada', value: fmtPct(kpi.metaChatarraCalculada, 2), icon: ICON_TARGET, accent: 'var(--series-6)' },
       {
         label: 'Desviación', value: fmtSigned(kpi.desviacionChatarra, function (v) { return fmtPct(v, 2); }),
         icon: ICON_TREND, accent: 'var(--series-3)',
@@ -3530,13 +3542,13 @@
     var pct1 = function (v) { return fmtPct(v, 1); };
     // soft dashed rule between the Chatarra / OEE / Costo-por-kg column groups
     var html = '<table class="wide"><thead><tr><th>Máquina</th>' +
-      '<th>Chatarra</th><th>Meta</th><th>Desv.</th><th>Estado</th>' +
+      '<th>Chatarra</th><th>Meta Admin.</th><th>Meta Calc.</th><th>Desv.</th><th>Estado</th>' +
       '<th class="group-sep">OEE</th><th>Meta</th><th>Desv.</th><th>Estado</th>' +
       '<th class="group-sep">Costo/kg</th><th>Meta</th><th>Desv.</th><th>Estado</th></tr></thead><tbody>';
     rows.forEach(function (r) {
       html += '<tr>' +
         '<td>' + escapeHtml(machineShortLabel(r.maquina, STATE.data.machineCodes)) + ' <span class="subtle">' + escapeHtml(r.maquina) + '</span></td>' +
-        tdv(r.chatarraPct, pct2) + tdv(r.metaChatarraEstandar, pct2) +
+        tdv(r.chatarraPct, pct2) + tdv(r.metaAdministrativa, pct2) + tdv(r.metaCalculada, pct2) +
         desvTd(r.chatarraPct, r.metaChatarraEstandar, true, pct2) +
         '<td>' + pill(r.chatarraEstado) + '</td>' +
         tdv(r.oee, pct1, 'group-sep') + tdv(r.oeeMeta, pct1) +
