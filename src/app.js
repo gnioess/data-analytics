@@ -2760,12 +2760,14 @@
       });
       return d;
     }
-    var linesHtml = '';
+    var linesHtml = '', lineValueLabelsHtml = '';
     opts.lines.forEach(function (l, li) {
       linesHtml += '<path d="' + linePath(l.values) + '" fill="none" stroke="' + l.color + '" stroke-width="1.8" stroke-dasharray="5 3" opacity=".9"></path>';
+      var dy = li === 0 ? -8 : 14;
       l.values.forEach(function (v, i) {
         if (!isNum(v)) return;
         linesHtml += '<circle cx="' + cxOf(i) + '" cy="' + y(v) + '" r="2.6" fill="' + l.color + '"></circle>';
+        lineValueLabelsHtml += '<text class="value-label" x="' + cxOf(i) + '" y="' + (y(v) + dy) + '" text-anchor="middle" font-size="9.5" fill="' + l.color + '">' + opts.formatValue(v) + '</text>';
         pts[i]['line' + li] = v;
       });
     });
@@ -2790,7 +2792,7 @@
     container.innerHTML = '<div class="chart-wrap">' + legendHtml +
       '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" id="svg' + chartUid + '">' +
       '<line class="baseline" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + baseline + '" y2="' + baseline + '"></line>' +
-      gridHtml + labelsHtml + barsHtml + linesHtml + totalHtml + barValueLabelsHtml + xLabelsHtml +
+      gridHtml + labelsHtml + barsHtml + linesHtml + totalHtml + barValueLabelsHtml + lineValueLabelsHtml + xLabelsHtml +
       '</svg><div class="chart-tooltip" id="' + tipId + '"></div></div>';
 
     var tip = container.querySelector('#' + tipId);
