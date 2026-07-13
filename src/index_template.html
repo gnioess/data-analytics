@@ -284,6 +284,17 @@ html[data-authed="1"] #dzScreen{display:flex;}
 }
 .btn-drive.loading .btn-icon,.btn-reload.loading .btn-icon{display:none;}
 .btn-drive.loading .btn-spinner,.btn-reload.loading .btn-spinner{display:inline-block;}
+/* Bigger, more visible loading state while the Drive connect/download flow is
+   busy — the small in-button spinner is easy to miss on a phone screen, this
+   gives a clear "still working" cue with a status line under it. */
+#dzBigLoading{display:none;flex-direction:column;align-items:center;gap:14px;margin-top:22px;}
+#dzBigLoading.show{display:flex;}
+.dz-spinner-lg{
+  width:38px;height:38px;border-radius:50%;
+  border:3px solid color-mix(in srgb, var(--sb-accent) 22%, transparent);
+  border-top-color:var(--sb-accent);animation:btnSpin .8s linear infinite;
+}
+#dzBigLoadingText{color:var(--text-secondary);font-size:13px;font-weight:600;}
 
 /* ---------- Build variants: "local" (downloadable, manual Excel upload only —
    Google's login won't work from a file:// origin) vs "online" (GitHub Pages,
@@ -593,6 +604,7 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
         <span class="btn-label">Conectar con Google Drive</span>
       </button>
       <div class="dz-drive-hint" id="dzDriveHint"></div>
+      <div id="dzBigLoading"><div class="dz-spinner-lg" aria-hidden="true"></div><div id="dzBigLoadingText">Conectando con base de datos…</div></div>
     </div>
   </div>
 </div>

@@ -284,6 +284,17 @@ html[data-authed="1"] #dzScreen{display:flex;}
 }
 .btn-drive.loading .btn-icon,.btn-reload.loading .btn-icon{display:none;}
 .btn-drive.loading .btn-spinner,.btn-reload.loading .btn-spinner{display:inline-block;}
+/* Bigger, more visible loading state while the Drive connect/download flow is
+   busy — the small in-button spinner is easy to miss on a phone screen, this
+   gives a clear "still working" cue with a status line under it. */
+#dzBigLoading{display:none;flex-direction:column;align-items:center;gap:14px;margin-top:22px;}
+#dzBigLoading.show{display:flex;}
+.dz-spinner-lg{
+  width:38px;height:38px;border-radius:50%;
+  border:3px solid color-mix(in srgb, var(--sb-accent) 22%, transparent);
+  border-top-color:var(--sb-accent);animation:btnSpin .8s linear infinite;
+}
+#dzBigLoadingText{color:var(--text-secondary);font-size:13px;font-weight:600;}
 
 /* ---------- Build variants: "local" (downloadable, manual Excel upload only —
    Google's login won't work from a file:// origin) vs "online" (GitHub Pages,
@@ -593,6 +604,7 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
         <span class="btn-label">Conectar con Google Drive</span>
       </button>
       <div class="dz-drive-hint" id="dzDriveHint"></div>
+      <div id="dzBigLoading"><div class="dz-spinner-lg" aria-hidden="true"></div><div id="dzBigLoadingText">Conectando con base de datos…</div></div>
     </div>
   </div>
 </div>
@@ -2648,7 +2660,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           push('OEE', 'OEE vs Meta', c.maquina, c.oee, c.oeeMeta, false, 'pct1');
         }
         push('Chatarra', 'Chatarra vs Meta', c.maquina, c.chatarraPct, c.metaChatarraEstandar, true, 'pct2');
-        push('Costos', 'Costo/kg vs Ppto', c.maquina, c.costoPorKilo, c.metaPresupuesto, true, 'money');
+        push('Costos', 'Costo/kg vs Ppto', c.maquina, c.costoPorKilo, c.metaPresupuesto, true, 'moneypkg');
       });
       ['Aceite y Lubricante', 'Insumos de Fábrica', 'Embalajes'].forEach(function (cat) {
         var cc = costosCategoria(anio, cat, opts.maquina ? { maquina: opts.maquina } : {});
@@ -4152,6 +4164,16 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     if (Math.abs(v) >= 1e3) return '$' + Math.round(v / 1e3) + 'k';
     return fmtMoney(v);
   }
+  // costo/kg (y su meta/presupuesto y desviación) siempre en 2 decimales — a
+  // diferencia de los montos totales en pesos, es una tasa chica donde los
+  // centavos importan para comparar máquinas o meses.
+  function fmtMoney2(n) { return n == null ? '-' : '$' + n.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function fmtMoneyTick2(v, isAxisTick) {
+    if (!isAxisTick) return fmtMoney2(v);
+    if (Math.abs(v) >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
+    if (Math.abs(v) >= 1e3) return '$' + Math.round(v / 1e3) + 'k';
+    return fmtMoney2(v);
+  }
 
   var ICON_GAUGE = '<path d="M12 21a9 9 0 1 1 9-9"></path><line x1="12" y1="12" x2="16" y2="8"></line><circle cx="12" cy="12" r="1"></circle>';
   var ICON_BOX = '<rect x="4" y="7" width="16" height="13" rx="1.5"></rect><path d="M4 7l8-4 8 4"></path><path d="M12 12v8"></path>';
@@ -4208,7 +4230,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       barValues: tend.map(function (m) { return m.costoKg; }),
       metaName: 'Meta presupuesto', metaValues: tend.map(function (m) { return m.costoMeta; }),
       desvName: 'Desviación (meta − real)', desvValues: tend.map(function (m) { return m.costoDesv; }),
-      formatValue: fmtMoneyTick
+      formatValue: fmtMoneyTick2
     });
 
     var metaSerie = resumen.map(function (m) { return STATE.engine.oeeMetaVal('OEE Planta', m.mes); });
@@ -4429,14 +4451,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var valesRows = [
       { label: 'Valor Vales de Consumo', unit: '$', values: det.columnas.map(function (c) { return c.valorVales; }), fmt: fmtMoney },
       { label: 'Costo por Metro Lineal', unit: '$', values: det.columnas.map(function (c) { return c.costoPorMetro; }), fmt: fmtMoney },
-      { label: 'Costo Por Kilo', unit: '$', values: det.columnas.map(function (c) { return c.costoPorKilo; }), fmt: fmtMoney },
-      { label: 'Meta Presupuesto', unit: '$', values: det.columnas.map(function (c) { return c.metaPresupuesto; }), fmt: fmtMoney },
-      { label: 'Desviación', unit: '$', values: det.columnas.map(function (c) { return c.desviacionCosto; }), fmt: fmtMoney }
+      { label: 'Costo Por Kilo', unit: '$', values: det.columnas.map(function (c) { return c.costoPorKilo; }), fmt: fmtMoney2 },
+      { label: 'Meta Presupuesto', unit: '$', values: det.columnas.map(function (c) { return c.metaPresupuesto; }), fmt: fmtMoney2 },
+      { label: 'Desviación', unit: '$', values: det.columnas.map(function (c) { return c.desviacionCosto; }), fmt: fmtMoney2 }
     ];
     renderMachineTable(el('detalleMesVales'), 'Vales de Consumo — ' + mesNombre, maquinas, valesRows);
     if (det.costoPlanta != null) {
-      el('detalleMesVales').innerHTML += '<p class="cap">Costo Por Kilo Planta: ' + fmtMoney(det.costoPlanta) +
-        (det.metaPlanta != null ? ' · Meta: ' + fmtMoney(det.metaPlanta) + ' · Desviación: ' + fmtMoney(det.desviacionCostoPlanta) : '') + '</p>';
+      el('detalleMesVales').innerHTML += '<p class="cap">Costo Por Kilo Planta: ' + fmtMoney2(det.costoPlanta) +
+        (det.metaPlanta != null ? ' · Meta: ' + fmtMoney2(det.metaPlanta) + ' · Desviación: ' + fmtMoney2(det.desviacionCostoPlanta) : '') + '</p>';
     }
 
     renderMachineTable(el('detalleMesOEE'), 'Indicadores OEE — ' + mesNombre, D.machines ? D.machines : maquinas.slice(0, -1), [
@@ -4489,9 +4511,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     renderMonthlyTable(el('detalleAnioVales'), 'Vales de Consumo — ' + maquina, [
       { label: 'Valor Vales de Consumo', unit: '$', values: det.meses.map(function (m) { return m.valorVales; }), fmt: fmtMoney },
       { label: 'Costo por Metro Lineal', unit: '$', values: det.meses.map(function (m) { return m.costoPorMetro; }), fmt: fmtMoney },
-      { label: 'Costo Por Kilo', unit: '$', values: det.meses.map(function (m) { return m.costoPorKilo; }), fmt: fmtMoney },
-      { label: 'Meta Presupuesto', unit: '$', values: det.meses.map(function (m) { return m.metaPresupuesto; }), fmt: fmtMoney },
-      { label: 'Desviación', unit: '$', values: det.meses.map(function (m) { return m.desviacionCosto; }), fmt: fmtMoney }
+      { label: 'Costo Por Kilo', unit: '$', values: det.meses.map(function (m) { return m.costoPorKilo; }), fmt: fmtMoney2 },
+      { label: 'Meta Presupuesto', unit: '$', values: det.meses.map(function (m) { return m.metaPresupuesto; }), fmt: fmtMoney2 },
+      { label: 'Desviación', unit: '$', values: det.meses.map(function (m) { return m.desviacionCosto; }), fmt: fmtMoney2 }
     ]);
     var rows = [
       { label: 'Disponibilidad', unit: '%', values: det.meses.map(function (m) { return m.disponibilidad; }), fmt: function (v) { return fmtPct(v, 1); } },
@@ -4702,8 +4724,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         tdv(r.oee, pct1, 'group-sep') + tdv(r.oeeMeta, pct1) +
         desvTd(r.oee, r.oeeMeta, false, pct1) +
         '<td>' + pill(r.oeeEstado) + '</td>' +
-        tdv(r.costoPorKilo, fmtMoney, 'group-sep') + tdv(r.metaPresupuesto, fmtMoney) +
-        desvTd(r.costoPorKilo, r.metaPresupuesto, true, fmtMoney) +
+        tdv(r.costoPorKilo, fmtMoney2, 'group-sep') + tdv(r.metaPresupuesto, fmtMoney2) +
+        desvTd(r.costoPorKilo, r.metaPresupuesto, true, fmtMoney2) +
         '<td>' + pill(r.costoEstado) + '</td>' +
         '</tr>';
     });
@@ -4715,7 +4737,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     kg: fmtInt,
     pct1: function (v) { return fmtPct(v, 1); },
     pct2: function (v) { return fmtPct(v, 2); },
-    money: fmtMoney
+    money: fmtMoney,
+    moneypkg: fmtMoney2
   };
   var CRITICOS_PILL = {
     critico: '<span class="pill bad">Crítico</span>',
@@ -4857,7 +4880,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     el('proyMesChips').innerHTML = [
       proyChip('Producción proyectada', fmtKgTick(prodCierreVal) + ' kg', proyDeltaSub(desvMesProd, 'sobre ppto', 'bajo ppto'), 'var(--series-1)'),
       proyChip('Chatarra', chatCierreVal != null ? fmtPct(chatCierreVal, 2) : '-', proyDeltaSub(desvMesChat, 'bajo meta', 'sobre meta'), 'var(--series-6)'),
-      proyChip('Costo/kg', costoCierreVal != null ? fmtMoney(costoCierreVal) : '-', proyDeltaSub(desvMesCosto, 'bajo ppto', 'sobre ppto'), 'var(--series-3)'),
+      proyChip('Costo/kg', costoCierreVal != null ? fmtMoney2(costoCierreVal) : '-', proyDeltaSub(desvMesCosto, 'bajo ppto', 'sobre ppto'), 'var(--series-3)'),
       proyChip('OEE', oeeCierreVal != null ? fmtPct(oeeCierreVal, 1) : '-', proyDeltaSub(desvMesOee, 'sobre meta', 'bajo meta'), 'var(--series-2)')
     ].join('');
 
@@ -4865,7 +4888,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     el('proyAnioChips').innerHTML = [
       proyChip('Producción proyectada al año', fmtKgTick(a.prodKg) + ' kg', proyDeltaSub(a.desvProdPct, 'sobre ppto', 'bajo ppto'), 'var(--series-1)'),
       proyChip('Chatarra proyectada', a.chatPct != null ? fmtPct(a.chatPct, 2) : '-', proyDeltaSub(a.desvChatPct, 'bajo meta', 'sobre meta'), 'var(--series-6)'),
-      proyChip('Costo/kg proyectado', a.costoKg != null ? fmtMoney(a.costoKg) : '-', proyDeltaSub(a.desvCostoPct, 'bajo ppto', 'sobre ppto'), 'var(--series-3)'),
+      proyChip('Costo/kg proyectado', a.costoKg != null ? fmtMoney2(a.costoKg) : '-', proyDeltaSub(a.desvCostoPct, 'bajo ppto', 'sobre ppto'), 'var(--series-3)'),
       proyChip('OEE proyectado', a.oee != null ? fmtPct(a.oee, 1) : '-', proyDeltaSub(a.desvOeePct, 'sobre meta', 'bajo meta'), 'var(--series-2)')
     ].join('');
 
@@ -4886,7 +4909,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       categories: MESES_ABBR,
       actual: pa.costoKg.serie.map(function (s) { return s.actual; }),
       proyectado: pa.costoKg.serie.map(function (s) { return s.proyectado; }),
-      meta: costoMetaSerie, formatValue: fmtMoneyTick, barColor: 'var(--series-3)'
+      meta: costoMetaSerie, formatValue: fmtMoneyTick2, barColor: 'var(--series-3)'
     });
     renderForecastChart(el('chartProyOEE'), {
       categories: MESES_ABBR,
@@ -5386,9 +5409,12 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     box.textContent = msg || '';
     box.classList.toggle('err', !!isErr);
   }
-  function driveSetBusy(busy) {
+  function driveSetBusy(busy, ctx) {
     var btn = el('driveConnectBtn'); if (btn) { btn.disabled = busy; btn.classList.toggle('loading', busy); }
     var rbtn = el('driveRefreshBtn'); if (rbtn) { rbtn.disabled = busy; rbtn.classList.toggle('loading', busy); }
+    // el spinner grande solo vive en la pantalla inicial (dzScreen) — el pequeño
+    // dentro del botón ya es suficiente para "Actualizar desde Drive" en el sidebar
+    if (ctx !== 'side') { var big = el('dzBigLoading'); if (big) big.classList.toggle('show', busy); }
   }
 
   function driveEnsureToken(promptMode, onReady, onError) {
@@ -5423,12 +5449,12 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   }
 
   function driveOpenPicker() {
-    driveHint('Conectando con Google…', false, 'dz');
-    driveSetBusy(true);
+    driveHint('Conectando con base de datos…', false, 'dz');
+    driveSetBusy(true, 'dz');
     driveEnsureToken('', function () {
       driveEnsurePicker(function () {
         driveHint('', false, 'dz');
-        driveSetBusy(false);
+        driveSetBusy(false, 'dz');
         var view = new google.picker.DocsView(google.picker.ViewId.DOCS)
           .setMimeTypes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.google-apps.spreadsheet')
           .setSelectFolderEnabled(false);
@@ -5439,8 +5465,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           .setCallback(driveOnPicked)
           .build();
         picker.setVisible(true);
-      }, function (msg) { driveSetBusy(false); driveHint(msg, true, 'dz'); });
-    }, function (msg) { driveSetBusy(false); driveHint(msg, true, 'dz'); });
+      }, function (msg) { driveSetBusy(false, 'dz'); driveHint(msg, true, 'dz'); });
+    }, function (msg) { driveSetBusy(false, 'dz'); driveHint(msg, true, 'dz'); });
   }
 
   function driveOnPicked(data) {
@@ -5451,7 +5477,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
   function driveDownloadFile(fileId, name, mimeType, ctx) {
     driveHint('Descargando "' + name + '" desde Drive…', false, ctx);
-    driveSetBusy(true);
+    driveSetBusy(true, ctx);
     var isGoogleSheet = mimeType === 'application/vnd.google-apps.spreadsheet';
     var url = isGoogleSheet
       ? 'https://www.googleapis.com/drive/v3/files/' + fileId + '/export?mimeType=application%2Fvnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -5467,10 +5493,10 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         driveSaveFile({ id: fileId, name: name, mimeType: mimeType });
         driveUpdateRefreshUi();
         driveHint('', false, ctx);
-        driveSetBusy(false);
+        driveSetBusy(false, ctx);
       })
       .catch(function (err) {
-        driveSetBusy(false);
+        driveSetBusy(false, ctx);
         driveHint('No se pudo leer el archivo desde Drive: ' + (err.message || err), true, ctx);
         if (ctx === 'dz') showError('No se pudo leer el archivo desde Google Drive.');
       });
@@ -5492,10 +5518,10 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var saved = driveSavedFile();
     if (!saved) return;
     driveHint('Conectando con Google…', false, 'side');
-    driveSetBusy(true);
+    driveSetBusy(true, 'side');
     driveEnsureToken('', function () {
       driveDownloadFile(saved.id, saved.name, saved.mimeType, 'side');
-    }, function (msg) { driveSetBusy(false); driveHint(msg, true, 'side'); });
+    }, function (msg) { driveSetBusy(false, 'side'); driveHint(msg, true, 'side'); });
   }
 
   function wireDriveUI() {
