@@ -1001,8 +1001,13 @@
       var chatarra = resumen.map(function (m) {
         var real = m.totalChatarraReal;
         var pct = m.pctChatarraPlanta;
+        // "pct"/"real" son planta completa (máquinas + desorillado Braner), así que
+        // la meta comparada también tiene que sumar sus dos componentes — no solo
+        // la meta calculada de máquinas (que por sí sola solo cubre el rechazo por
+        // espesor, nunca el desorillado). Mismo criterio que calidadPlantaDetalle.
         var metaDinamica = chatarraPorEspesorTarget(anio, m.mes);
-        var meta = pct == null ? null : (metaDinamica != null ? metaDinamica : META_CHATARRA_PLANTA);
+        var metaMaq = metaDinamica != null ? metaDinamica : META_CHATARRA_MAQUINAS;
+        var meta = pct == null ? null : (metaMaq + META_CHATARRA_BRANER);
         var desv = (meta != null && pct != null) ? meta - pct : null;
         return { mes: m.mes, mesAbbr: m.mesAbbr, real: real, pct: pct, meta: meta, desv: desv, metaEsDinamica: metaDinamica != null };
       });
@@ -2468,16 +2473,18 @@
       it.hideLabel = lastLabelX != null && (it.cx - lastLabelX) < 11;
       if (!it.hideLabel) lastLabelX = it.cx;
     });
-    // Long article names (30+ chars is common) rotated vertically force a tall top
-    // margin just to fit the single longest one — even when every bubble sits near
-    // the bottom, leaving that whole margin empty. Cap what's drawn on-chart (full
-    // name still shows on hover) so the reserved space stays proportionate.
+    // Long article names (30+ chars is common) rotated vertically need room above
+    // their own bubble — but reserving a top margin sized for the single longest
+    // name in the whole chart (regardless of which bubble it belongs to) leaves a
+    // huge empty gap whenever that long-named article isn't the highest-value one.
+    // Instead: start from a small margin, see how far each bubble's own label
+    // actually reaches above it, and only grow the margin by whatever the worst
+    // individual overflow turns out to be — self-adjusting instead of worst-case.
     var NAME_LABEL_MAX = 24;
     function shortLabel(s) { return s.length > NAME_LABEL_MAX ? s.slice(0, NAME_LABEL_MAX - 1) + '…' : s; }
-    var maxNameLen = items.length ? Math.max.apply(null, items.map(function (it) { return it.hideLabel ? 0 : Math.min(it.label.length, NAME_LABEL_MAX); })) : 0;
     var maxR = items.length ? Math.max.apply(null, items.map(function (it) { return it.r; })) : minR;
-    var padT = Math.max(40, maxR + 12 + maxNameLen * 5.4 + 8);
-    var H = padT + plotH + padB;
+    var padT0 = Math.max(30, maxR + 10);
+    var H0 = padT0 + plotH + padB;
 
     // A square-root y-scale, not linear: chatarra % is usually a long right-tailed
     // distribution (most articles near 0%, an occasional article near 100%), so a
@@ -2486,9 +2493,22 @@
     // gives the bottom (where almost every point lives) much more room, without
     // hiding or relabeling the outlier's true value.
     var maxVSqrt = Math.sqrt(maxV) || 1;
-    function y(v) { return padT + plotH - (Math.sqrt(Math.max(0, v)) / maxVSqrt) * plotH; }
+    function yWithPadT(padTv, v) { return padTv + plotH - (Math.sqrt(Math.max(0, v)) / maxVSqrt) * plotH; }
+    items.forEach(function (it) { it.cy = yWithPadT(padT0, it.val); });
+
+    var topSafety = 8;
+    var worstOverflow = 0;
+    items.forEach(function (it) {
+      if (it.hideLabel) return;
+      var nameLen = Math.min(it.label.length, NAME_LABEL_MAX);
+      var labelTop = it.cy - it.r - 5 - nameLen * 5.4;
+      if (labelTop < topSafety) worstOverflow = Math.max(worstOverflow, topSafety - labelTop);
+    });
+    var padT = padT0 + worstOverflow;
+    var H = H0 + worstOverflow;
+    function y(v) { return yWithPadT(padT, v); }
     var baseline = y(0);
-    items.forEach(function (it) { it.cy = y(it.val); });
+    items.forEach(function (it) { it.cy += worstOverflow; });
 
     var gridLines = 4, gridHtml = '', labelsHtml = '';
     for (var g = 0; g <= gridLines; g++) {
