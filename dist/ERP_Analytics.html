@@ -3743,24 +3743,27 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       monthSepHtml += '<line class="month-sep" x1="' + sepX + '" x2="' + sepX + '" y1="8" y2="' + (H - padB + 6) + '"></line>';
     }
 
-    // meta calculada: línea punteada delgada sobre el mismo eje sqrt, con su valor
-    // en cada punto — igual criterio visual que las demás líneas de meta de la app
+    // meta calculada: línea base sólida delgada, verde clara, que corre borde a
+    // borde de cada banda de mes (no solo punto a punto por el centro) — así se
+    // ve como una referencia continua a lo largo de todo el gráfico en vez de un
+    // segmento corto perdido en el medio de la banda.
+    var META_LINE_COLOR = '#8bc34a';
     var metaLineHtml = '', metaLegendHtml = '';
     if (opts.metaLine) {
-      var mPath = '', mStarted = false;
+      var mSegs = '';
       opts.metaLine.values.forEach(function (v, i) {
-        if (!isNum(v)) { mStarted = false; return; }
-        mPath += (mStarted ? 'L' : 'M') + xBase(i) + ',' + y(v);
-        mStarted = true;
+        if (!isNum(v)) return;
+        var left = padL + bandW * i, right = padL + bandW * (i + 1);
+        var my = y(v);
+        mSegs += 'M' + left + ',' + my + 'L' + right + ',' + my + ' ';
       });
-      metaLineHtml = '<path d="' + mPath + '" fill="none" stroke="var(--text-primary)" stroke-width="1.8" stroke-dasharray="5 3" opacity=".8"></path>';
+      metaLineHtml = '<path d="' + mSegs + '" fill="none" stroke="' + META_LINE_COLOR + '" stroke-width="1.5" opacity=".9"></path>';
       opts.metaLine.values.forEach(function (v, i) {
         if (!isNum(v)) return;
         var mx = xBase(i), my = y(v);
-        metaLineHtml += '<circle cx="' + mx + '" cy="' + my + '" r="2.6" fill="var(--text-primary)"></circle>' +
-          '<text class="value-label" x="' + mx + '" y="' + (my - 8) + '" text-anchor="middle" font-size="9.5" fill="var(--text-primary)">' + opts.formatValue(v) + '</text>';
+        metaLineHtml += '<text class="value-label" x="' + mx + '" y="' + (my - 8) + '" text-anchor="middle" font-size="9.5" fill="' + META_LINE_COLOR + '">' + opts.formatValue(v) + '</text>';
       });
-      metaLegendHtml = '<span class="sw"><span class="dot" style="background:var(--text-primary)"></span>' + escapeHtml(opts.metaLine.name) + '</span>';
+      metaLegendHtml = '<span class="sw"><span class="dot" style="background:' + META_LINE_COLOR + '"></span>' + escapeHtml(opts.metaLine.name) + '</span>';
     }
 
     var bubblesHtml = '', centerLabelsHtml = '', nameLabelsHtml = '', leadersHtml = '';
