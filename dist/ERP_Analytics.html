@@ -846,6 +846,7 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
           <h3>OEE por máquina vs. meta</h3>
           <div class="cap">% — <span id="mesLabel4"></span></div>
           <div id="chartMesOEE"></div>
+          <div class="cap" id="oeeProgramaNote"></div>
         </div>
         <div class="grid-2">
           <div class="card">
@@ -1572,8 +1573,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     //      followed by rows of label + 12 numeric values in the SAME columns.
     //  (b) chatarra-meta-estándar: a single cell whose text is exactly "Metas"
     //      followed downward, in that column and the next, by machine + 1 value.
+    //  (c) "programa" targets (Calidad Planta Esperado / OEE Programa): a plain
+    //      month-header row (no "Máquina" label, may start at any column) followed
+    //      by one or two labeled rows of 12 monthly values — these are official,
+    //      already-computed-by-the-plant values, not something this app derives.
     var oeeMeta = {}; // oeeMeta[label][mes] = value
     var chatarraMeta = {}; // chatarraMeta[machine] = value
+    var calidadPlantaEsperado = {}; // calidadPlantaEsperado[mes] = value (oficial, calculado por programa)
+    var oeePrograma = {}; // oeePrograma[mes] = value (oficial, calculado por programa de producción)
     var mesKeys = MESES.map(normKey);
 
     sheets.forEach(function (aoa) {
@@ -1607,8 +1614,29 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           }
         }
       }
+
+      // (c) "programa" targets: a month-header row (Enero..Diciembre, wherever it
+      // starts — this one doesn't lead with "Máquina" in col A like the OEE-meta
+      // matrix above) followed by labeled rows "Calidad Planta Esperado" / "OEE
+      // Programa", each one value per month in the same columns as the header.
+      for (var r3 = 0; r3 < aoa.length; r3++) {
+        var row3 = aoa[r3] || [];
+        var monthCols3 = mesKeys.map(function (mk) {
+          for (var c = 0; c < row3.length; c++) { if (normKey(row3[c]) === mk) return c; }
+          return null;
+        });
+        if (monthCols3.filter(function (c) { return c != null; }).length < 6) continue;
+        for (var rr3 = r3 + 1; rr3 <= r3 + 8 && rr3 < aoa.length; rr3++) {
+          var label3 = normKey((aoa[rr3] || [])[0]);
+          if (label3 === normKey('Calidad Planta Esperado')) {
+            MESES.forEach(function (m, mi) { if (monthCols3[mi] != null) calidadPlantaEsperado[m] = toNum((aoa[rr3] || [])[monthCols3[mi]]); });
+          } else if (label3 === normKey('OEE Programa')) {
+            MESES.forEach(function (m, mi) { if (monthCols3[mi] != null) oeePrograma[m] = toNum((aoa[rr3] || [])[monthCols3[mi]]); });
+          }
+        }
+      }
     });
-    return { oeeMeta: oeeMeta, chatarraMeta: chatarraMeta };
+    return { oeeMeta: oeeMeta, chatarraMeta: chatarraMeta, calidadPlantaEsperado: calidadPlantaEsperado, oeePrograma: oeePrograma };
   }
 
   function rechazoRowsFrom(aoa, headerRow) {
@@ -2021,6 +2049,17 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var v = D.metas.chatarraMeta[maquina];
       return isNum(v) ? v : null;
     }
+    // Valores oficiales "por programa" (calculados por el plan de producción del
+    // mes, no una aproximación de este motor) — solo existen a nivel planta, sin
+    // desglose por máquina, y no todos los Excel los traen todavía.
+    function calidadPlantaEsperadoVal(mesNombre) {
+      var v = D.metas.calidadPlantaEsperado[mesNombre];
+      return isNum(v) ? v : null;
+    }
+    function oeeProgramaVal(mesNombre) {
+      var v = D.metas.oeePrograma[mesNombre];
+      return isNum(v) ? v : null;
+    }
 
     var groupFilter = inSet(D.groupMachines);
 
@@ -2094,10 +2133,22 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var metaChatarraCalculada = denCalc ? numCalc / denCalc : null;
       var desviacionChatarraCalculada = (metaChatarraCalculada != null && chatarraPlantaPct != null) ?
         metaChatarraCalculada - chatarraPlantaPct : null;
-      // meta calculada total = componente de máquinas (arriba) + el estándar de
-      // Braner/desorillado (no tiene tabla por espesor propia) — comparable directo
-      // contra "Chatarra Planta", que también es la suma de ambos componentes.
-      var metaChatarraCalculadaTotal = metaChatarraCalculada != null ? metaChatarraCalculada + META_CHATARRA_BRANER : null;
+      // meta calculada total: por mes, prefiere el "Calidad Planta Esperado" oficial
+      // (hoja Metas); si ese mes no lo trae, cae al componente de máquinas (arriba) +
+      // el estándar de Braner/desorillado. Meses sin ninguna de las dos señales se
+      // excluyen del promedio (no se usa la meta fija administrativa acá — para eso
+      // ya está el tile "Meta Administrativa" — así el tile queda en "-" cuando este
+      // Excel no trae ni tabla de rechazo ni el dato oficial, igual que antes).
+      var numCalcTotal = 0, denCalcTotal = 0;
+      resumen.forEach(function (m) {
+        var oficial = calidadPlantaEsperadoVal(m.mes);
+        var dinamica = chatarraPorEspesorTarget(anio, m.mes);
+        var val = oficial != null ? oficial : (dinamica != null ? dinamica + META_CHATARRA_BRANER : null);
+        if (val == null) return;
+        var w = (m.totalProduccion || 0) + (m.totalChatarraReal || 0);
+        numCalcTotal += val * w; denCalcTotal += w;
+      });
+      var metaChatarraCalculadaTotal = denCalcTotal ? numCalcTotal / denCalcTotal : null;
       var desviacionChatarraCalculadaTotal = (metaChatarraCalculadaTotal != null && chatarraPlantaPct != null) ?
         metaChatarraCalculadaTotal - chatarraPlantaPct : null;
 
@@ -2110,12 +2161,28 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       });
       var oeePlantaGlobal = denOEE ? numOEE / denOEE : null;
 
+      // OEE meta programa: promedio ponderado (mismo criterio de arriba) del "OEE
+      // Programa" oficial (hoja Metas, calculado por el usuario en función del
+      // programa de producción) para los meses en que el Excel lo trae.
+      var numOeeProg = 0, denOeeProg = 0;
+      resumen.forEach(function (m) {
+        var prog = oeeProgramaVal(m.mes);
+        if (isNum(prog)) {
+          var w = (m.totalProduccion || 0) + (m.totalChatarraReal || 0);
+          numOeeProg += prog * w; denOeeProg += w;
+        }
+      });
+      var oeeMetaPrograma = denOeeProg ? numOeeProg / denOeeProg : null;
+      var desviacionOeePrograma = (oeeMetaPrograma != null && oeePlantaGlobal != null) ?
+        oeePlantaGlobal - oeeMetaPrograma : null;
+
       return {
         oeePlantaGlobal: oeePlantaGlobal, kilosFabricados: kilosFabricados, chatarraKg: chatarraKgTotal,
         chatarraMaquinasPct: chatarraMaquinasPct, chatarraBranerPct: chatarraBranerPct,
         chatarraPlantaPct: chatarraPlantaPct, metaChatarra: META_CHATARRA_PLANTA, desviacionChatarra: desviacionChatarra,
         metaChatarraCalculada: metaChatarraCalculada, desviacionChatarraCalculada: desviacionChatarraCalculada,
-        metaChatarraCalculadaTotal: metaChatarraCalculadaTotal, desviacionChatarraCalculadaTotal: desviacionChatarraCalculadaTotal
+        metaChatarraCalculadaTotal: metaChatarraCalculadaTotal, desviacionChatarraCalculadaTotal: desviacionChatarraCalculadaTotal,
+        oeeMetaPrograma: oeeMetaPrograma, desviacionOeePrograma: desviacionOeePrograma
       };
     }
 
@@ -2152,6 +2219,19 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       return kgTotal ? kgPonderado / kgTotal : null;
     }
 
+    // Meta total de Calidad Planta para un mes: prefiere el valor oficial
+    // "Calidad Planta Esperado" (calculado por el programa de producción, hoja
+    // Metas) cuando el Excel lo trae — es la fuente de verdad real, no una
+    // aproximación. Si ese mes no está (todavía sin cerrar, o el Excel no trae
+    // la tabla), cae a la meta por espesor de este motor + el estándar de Braner.
+    function metaCalidadPlantaTotal(anio, mesNombre) {
+      var oficial = calidadPlantaEsperadoVal(mesNombre);
+      if (oficial != null) return { valor: oficial, esOficial: true };
+      var metaDinamica = chatarraPorEspesorTarget(anio, mesNombre);
+      var metaMaq = metaDinamica != null ? metaDinamica : META_CHATARRA_MAQUINAS;
+      return { valor: metaMaq + META_CHATARRA_BRANER, esOficial: false, esDinamica: metaDinamica != null };
+    }
+
     /* ---- Presupuesto vs real (rows 34-51) ---- */
     function presupuesto(anio, resumen) {
       var produccion = resumen.map(function (m) {
@@ -2171,9 +2251,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         // Se exponen las dos metas (administrativa fija y calculada) con su propia
         // desviación cada una; "meta"/"desv" quedan apuntando a la calculada porque
         // es la que se grafica (la administrativa se muestra solo en la tabla).
-        var metaDinamica = chatarraPorEspesorTarget(anio, m.mes);
-        var metaMaq = metaDinamica != null ? metaDinamica : META_CHATARRA_MAQUINAS;
-        var metaCalculada = pct == null ? null : (metaMaq + META_CHATARRA_BRANER);
+        var metaTotalInfo = metaCalidadPlantaTotal(anio, m.mes);
+        var metaCalculada = pct == null ? null : metaTotalInfo.valor;
         var metaAdministrativa = pct == null ? null : META_CHATARRA_PLANTA;
         var desvCalculada = (metaCalculada != null && pct != null) ? metaCalculada - pct : null;
         var desvAdministrativa = (metaAdministrativa != null && pct != null) ? metaAdministrativa - pct : null;
@@ -2182,7 +2261,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           meta: metaCalculada, desv: desvCalculada,
           metaCalculada: metaCalculada, desvCalculada: desvCalculada,
           metaAdministrativa: metaAdministrativa, desvAdministrativa: desvAdministrativa,
-          metaEsDinamica: metaDinamica != null
+          metaEsDinamica: !!metaTotalInfo.esDinamica, metaEsOficial: !!metaTotalInfo.esOficial
         };
       });
       return { produccion: produccion, chatarra: chatarra };
@@ -2199,7 +2278,11 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         var metaDinamica = chatarraPorEspesorTarget(anio, m.mes);
         var metaMaq = metaDinamica != null ? metaDinamica : META_CHATARRA_MAQUINAS;
         var metaBran = META_CHATARRA_BRANER;
-        var metaTotal = metaMaq + metaBran;
+        // el total prefiere el "Calidad Planta Esperado" oficial (hoja Metas) —
+        // el desglose máquinas/Braner de abajo sigue siendo el cálculo propio de
+        // este motor, ya que el valor oficial no viene separado en componentes
+        var metaTotalInfo = metaCalidadPlantaTotal(anio, m.mes);
+        var metaTotal = metaTotalInfo.valor;
         var desvMaq = realMaq != null ? metaMaq - realMaq : null;
         var desvBran = realBran != null ? metaBran - realBran : null;
         var desvTotal = (real != null) ? metaTotal - real : null;
@@ -2208,7 +2291,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           real: real, esperado: metaTotal,
           realMaquinas: realMaq, metaMaquinas: metaMaq, desvMaquinas: desvMaq,
           realBraner: realBran, metaBraner: metaBran, desvBraner: desvBran,
-          desvTotal: desvTotal, metaEsDinamica: metaDinamica != null
+          desvTotal: desvTotal, metaEsDinamica: metaDinamica != null, metaEsOficial: metaTotalInfo.esOficial
         };
       });
     }
@@ -3021,7 +3104,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       puntosCriticos: puntosCriticos, insumosPxQ: insumosPxQ, insumosMovimiento: insumosMovimiento,
       espesorKgFiltrado: espesorKgFiltrado, espesoresDisponibles: espesoresDisponibles,
       skuBuscador: skuBuscador, skuMonthlyTrend: skuMonthlyTrend, skuArticleMonthlyTrend: skuArticleMonthlyTrend,
-      chatarraPorEspesorTarget: chatarraPorEspesorTarget
+      chatarraPorEspesorTarget: chatarraPorEspesorTarget,
+      oeeProgramaVal: oeeProgramaVal, calidadPlantaEsperadoVal: calidadPlantaEsperadoVal
     };
   }
 
@@ -4335,6 +4419,15 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         deltaText: kpi.desviacionChatarraCalculadaTotal == null ? '' : (kpi.desviacionChatarraCalculadaTotal >= 0 ? 'sobre la meta' : 'bajo la meta')
       }
     ];
+    if (kpi.oeeMetaPrograma != null) {
+      tiles.push({ label: 'OEE Meta Programa', value: fmtPct(kpi.oeeMetaPrograma, 1), icon: ICON_TARGET, accent: 'var(--series-5)' });
+      tiles.push({
+        label: 'Desv. OEE Programa', value: fmtSigned(kpi.desviacionOeePrograma, function (v) { return fmtPct(v, 1); }),
+        icon: ICON_TREND, accent: 'var(--series-3)',
+        deltaClass: deltaClass(kpi.desviacionOeePrograma, true),
+        deltaText: kpi.desviacionOeePrograma == null ? '' : (kpi.desviacionOeePrograma >= 0 ? 'sobre la meta' : 'bajo la meta')
+      });
+    }
     el('kpiGrid').innerHTML = tiles.map(function (t) {
       return '<div class="tile" style="--accent:' + t.accent + '">' +
         '<div class="tile-top"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + t.icon + '</svg></span></div>' +
@@ -4394,18 +4487,22 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       formatValue: fmtKgTick
     });
 
-    // el target dinámico por espesor (si el Excel trae la tabla de rechazo estándar)
-    // reemplaza la meta fija mes a mes — se avisa en el subtítulo cuál está activo,
-    // ya que la mayoría de los Excel de este reporte no traen esa tabla todavía.
+    // orden de preferencia de la meta calculada: oficial "Calidad Planta Esperado"
+    // (programa de producción) > dinámica por espesor (este motor) > 4,6% fijo —
+    // se avisa en el subtítulo cuál está activo, ya que no todos los Excel traen
+    // las dos primeras.
+    var hayMetaOficialPpto = ppto.chatarra.some(function (m) { return m.metaEsOficial; });
     var hayMetaDinamica = ppto.chatarra.some(function (m) { return m.metaEsDinamica; });
-    el('chatPptoCap').textContent = hayMetaDinamica ?
-      '% chatarra planta vs. meta dinámica por espesor (se ajusta según el mix de espesores producido cada mes; meses sin tabla de rechazo estándar usan 4,6% fijo)' :
-      '% chatarra planta vs. meta (4,6% fijo — este Excel no trae la tabla de rechazo estándar por espesor para calcular una meta dinámica)';
+    el('chatPptoCap').textContent = hayMetaOficialPpto ?
+      '% chatarra planta vs. meta oficial "Calidad Planta Esperado" (programa de producción; meses sin ese dato usan la meta calculada por espesor o 4,6% fijo)' :
+      (hayMetaDinamica ?
+        '% chatarra planta vs. meta dinámica por espesor (se ajusta según el mix de espesores producido cada mes; meses sin tabla de rechazo estándar usan 4,6% fijo)' :
+        '% chatarra planta vs. meta (4,6% fijo — este Excel no trae la tabla de rechazo estándar por espesor para calcular una meta dinámica)');
     renderComboChart(el('chartChatPpto'), {
       categories: ppto.chatarra.map(function (m) { return m.mesAbbr; }),
       barName: 'Chatarra planta', barColor: 'var(--series-6)',
       barValues: ppto.chatarra.map(function (m) { return m.pct; }),
-      metaName: hayMetaDinamica ? 'Meta por espesor' : 'Meta (4,6%)', metaValues: ppto.chatarra.map(function (m) { return m.meta; }),
+      metaName: hayMetaOficialPpto ? 'Meta Programa' : (hayMetaDinamica ? 'Meta por espesor' : 'Meta (4,6%)'), metaValues: ppto.chatarra.map(function (m) { return m.meta; }),
       desvName: 'Desviación (meta − real)', desvValues: ppto.chatarra.map(function (m) { return m.desv; }),
       formatValue: fmtPctTick
     });
@@ -4440,13 +4537,19 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var maquina = STATE.oeeCalidad.maquina;
     var mesFiltro = STATE.oeeCalidad.mes;
     var maquinaLabel = maquina ? machineShortLabel(maquina, STATE.data.machineCodes) : 'Planta';
-    var categories, oeeReal, oeeMeta, calReal, calEsperado, calDesvMaq, calDesvBran, calDesvTotal, hayDesglose, hayMetaDinamica;
+    var categories, oeeReal, oeeMeta, calReal, calEsperado, calDesvMaq, calDesvBran, calDesvTotal, hayDesglose, hayMetaDinamica, hayOeePrograma, hayMetaOficial;
 
     if (!maquina) {
       var resumen = STATE.engine.resumenPlanta(anio);
       categories = resumen.map(function (m) { return m.mesAbbr; });
       oeeReal = resumen.map(function (m) { return m.oeeMensual; });
-      oeeMeta = resumen.map(function (m) { return STATE.engine.oeeMetaVal('OEE Planta', m.mes); });
+      // "OEE Programa" (calculado por el plan de producción del mes, oficial) es
+      // preferible a la meta administrativa fija cuando el Excel lo trae
+      oeeMeta = resumen.map(function (m) {
+        var prog = STATE.engine.oeeProgramaVal(m.mes);
+        return prog != null ? prog : STATE.engine.oeeMetaVal('OEE Planta', m.mes);
+      });
+      hayOeePrograma = resumen.some(function (m) { return STATE.engine.oeeProgramaVal(m.mes) != null; });
       var cal = STATE.engine.calidadPlantaDetalle(anio);
       calReal = cal.map(function (m) { return m.real; });
       calEsperado = cal.map(function (m) { return m.esperado; });
@@ -4454,6 +4557,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       calDesvBran = cal.map(function (m) { return m.desvBraner; });
       calDesvTotal = cal.map(function (m) { return m.desvTotal; });
       hayMetaDinamica = cal.some(function (m) { return m.metaEsDinamica; });
+      hayMetaOficial = cal.some(function (m) { return m.metaEsOficial; });
       hayDesglose = true;
     } else {
       var det = STATE.engine.detalleAnio(anio, maquina);
@@ -4468,21 +4572,23 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     }
     var oeeDesv = oeeReal.map(function (v, i) { return (isNum(v) && isNum(oeeMeta[i])) ? v - oeeMeta[i] : null; });
 
-    el('oeeCalidadOeeCap').textContent = 'OEE real vs. meta — ' + maquinaLabel;
+    el('oeeCalidadOeeCap').textContent = 'OEE real vs. ' + (hayOeePrograma ? 'meta por programa de producción' : 'meta administrativa') + ' — ' + maquinaLabel;
     renderTopLineBottomBarChart(el('chartOeeCalidadOEE'), {
       categories: categories,
       lines: [
         { name: 'OEE Real', color: 'var(--series-2)', values: oeeReal },
-        { name: 'OEE Meta', color: 'var(--series-5)', values: oeeMeta }
+        { name: hayOeePrograma ? 'OEE Meta Programa' : 'OEE Meta', color: 'var(--series-5)', values: oeeMeta }
       ],
       bars: [{ name: 'Desviación OEE', signed: true, values: oeeDesv }],
       formatValue: fmtPctTick
     });
 
     if (hayDesglose) {
-      el('oeeCalidadCalCap').textContent = hayMetaDinamica ?
-        'Calidad Planta: chatarra máquinas + desorillado Braner vs. meta dinámica por espesor' :
-        'Calidad Planta: chatarra máquinas + desorillado Braner vs. meta (4,6% fijo: 2,70% máquinas + 1,90% Braner)';
+      el('oeeCalidadCalCap').textContent = hayMetaOficial ?
+        'Calidad Planta: chatarra máquinas + desorillado Braner vs. meta oficial "Calidad Planta Esperado" (programa de producción)' :
+        (hayMetaDinamica ?
+          'Calidad Planta: chatarra máquinas + desorillado Braner vs. meta dinámica por espesor' :
+          'Calidad Planta: chatarra máquinas + desorillado Braner vs. meta (4,6% fijo: 2,70% máquinas + 1,90% Braner)');
       renderTopLineBottomBarChart(el('chartOeeCalidadCalidad'), {
         categories: categories,
         lines: [
@@ -4552,6 +4658,15 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       formatValue: fmtPctTick, barColorVar: 'var(--series-2)',
       seriesLabel: 'OEE', targetLabel: 'Meta'
     });
+    // "OEE Programa" es un valor único de planta (hoja Metas), no viene desglosado
+    // por máquina, así que no encaja como línea en un gráfico por máquina — se
+    // muestra como referencia de texto junto al gráfico.
+    var oeeProgramaMes = STATE.engine.oeeProgramaVal(mesNombre);
+    var oeeProgramaEl = el('oeeProgramaNote');
+    if (oeeProgramaEl) {
+      oeeProgramaEl.textContent = oeeProgramaMes != null ?
+        'OEE Meta Programa (planta, según programa de producción de ' + mesNombre + '): ' + fmtPct(oeeProgramaMes, 1) : '';
+    }
 
     var noBraner = det.columnas.filter(function (c) { return !c.isBraner; });
     var noBranerCortas = maquinasCortas.filter(function (_, i) { return !det.columnas[i].isBraner; });
@@ -4868,6 +4983,22 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         '<td>' + pill(r.costoEstado) + '</td>' +
         '</tr>';
     });
+    // fila de planta: OEE Programa es un valor único de planta (no viene desglosado
+    // por máquina en el Excel), así que se muestra aparte, al pie de la tabla
+    var oeeProg = STATE.engine.oeeProgramaVal(mesNombre);
+    if (oeeProg != null) {
+      var resMes = STATE.engine.resumenPlanta(anio).filter(function (m) { return m.mes === mesNombre; })[0];
+      var oeeRealPlanta = resMes ? resMes.oeeMensual : null;
+      var estadoOeeProg = (oeeRealPlanta == null) ? 'sindato' : (oeeRealPlanta >= oeeProg ? 'ok' : 'alerta');
+      html += '<tr class="total">' +
+        '<td>Planta <span class="subtle">OEE Programa</span></td>' +
+        '<td class="dash">-</td><td class="dash">-</td><td class="dash">-</td><td class="dash">-</td><td class="dash">-</td><td class="dash">-</td>' +
+        tdv(oeeRealPlanta, pct1, 'group-sep') + tdv(oeeProg, pct1) +
+        desvTd(oeeRealPlanta, oeeProg, false, pct1) +
+        '<td>' + pill(estadoOeeProg) + '</td>' +
+        '<td class="group-sep dash">-</td><td class="dash">-</td><td class="dash">-</td><td class="dash">-</td>' +
+        '</tr>';
+    }
     html += '</tbody></table>';
     el('torreControl').innerHTML = html;
   }
