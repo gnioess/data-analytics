@@ -1271,7 +1271,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   function fmt1(n) { return n == null ? '-' : NF_1D.format(n); }
   function fmtPct(n, dec) {
     if (n == null) return '-';
-    return (n * 100).toLocaleString('es-CL', { maximumFractionDigits: dec == null ? 1 : dec, minimumFractionDigits: dec == null ? 1 : dec }) + '%';
+    return (n * 100).toLocaleString('es-CL', { maximumFractionDigits: dec == null ? 2 : dec, minimumFractionDigits: dec == null ? 2 : dec }) + '%';
   }
   function fmtMoney(n) { return n == null ? '-' : '$' + NF_INT.format(Math.round(n)); }
   function fmtSigned(n, formatter) {
@@ -3381,7 +3381,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         // is hard, so tall segments carry "3mm 45%" and medium ones just "3mm"
         if (hDraw >= 26) {
           stackLabelsHtml += '<text class="mix-stack-label" x="' + cx + '" y="' + (top + hDraw / 2 - 3) + '" text-anchor="middle">' + escapeHtml(s.name.replace(' mm', 'mm')) + '</text>' +
-            '<text class="mix-stack-label" x="' + cx + '" y="' + (top + hDraw / 2 + 9) + '" text-anchor="middle">' + fmtPct(v / total, 0) + '</text>';
+            '<text class="mix-stack-label" x="' + cx + '" y="' + (top + hDraw / 2 + 9) + '" text-anchor="middle">' + fmtPct(v / total, 2) + '</text>';
         } else if (hDraw >= 13) {
           stackLabelsHtml += '<text class="mix-stack-label" x="' + cx + '" y="' + (top + hDraw / 2 + 3.5) + '" text-anchor="middle">' + escapeHtml(s.name.replace(' mm', 'mm')) + '</text>';
         }
@@ -3413,7 +3413,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         tip.style.left = (seg.cx * scale) + 'px';
         tip.style.top = (seg.top * scale) + 'px';
         tip.style.opacity = 1;
-        tip.innerHTML = '<strong>' + seg.cat + '</strong><br>' + seg.name + ': ' + fmtPct(seg.v, 1);
+        tip.innerHTML = '<strong>' + seg.cat + '</strong><br>' + seg.name + ': ' + fmtPct(seg.v, 2);
         barEl.classList.add('bar-active');
       });
       barEl.addEventListener('mouseleave', function () { tip.style.opacity = 0; barEl.classList.remove('bar-active'); });
@@ -3462,7 +3462,12 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         var w = Math.max(1, barW - gap);
         barsHtml += '<rect class="bar" data-i="' + i + '" data-s="' + si + '" x="' + x0 + '" y="' + top + '" width="' + w + '" height="' + h + '" rx="' + r + '" fill="' + s.color + '"></rect>';
         if (opts.showLabels) {
-          valueLabelsHtml += '<text class="value-label" x="' + (x0 + w / 2) + '" y="' + (top - 4) + '" text-anchor="middle" font-size="9">' + opts.formatValue(val) + '</text>';
+          // las barras de un grupo quedan angostas (varias series por categoría),
+          // así que la etiqueta sobre la barra usa un formateador más compacto que
+          // el de los ejes/tooltip si se provee uno — la precisión completa igual
+          // queda disponible en la tabla de datos que acompaña a este gráfico.
+          var labelFmt = opts.formatLabel || opts.formatValue;
+          valueLabelsHtml += '<text class="value-label" x="' + (x0 + w / 2) + '" y="' + (top - 4) + '" text-anchor="middle" font-size="9">' + labelFmt(val) + '</text>';
         }
         bars.push({ i: i, si: si, cat: cat, name: s.name, val: val, cx: x0 + w / 2, top: top });
       });
@@ -3594,7 +3599,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var am = (a0 + a1) / 2;
       if (frac >= 0.04) {
         var lx = cx + (R + r0) / 2 * Math.cos(am), ly = cy + (R + r0) / 2 * Math.sin(am);
-        labels += '<text class="stack-label" x="' + lx + '" y="' + (ly + 3.5) + '" text-anchor="middle">' + fmtPct(frac, 0) + '</text>';
+        labels += '<text class="stack-label" x="' + lx + '" y="' + (ly + 3.5) + '" text-anchor="middle">' + fmtPct(frac, 2) + '</text>';
       }
       pts.push({ i: i, label: it.label, value: it.value, frac: frac, mx: cx + R * Math.cos(am), my: cy + R * Math.sin(am) });
       a0 = a1;
@@ -3606,7 +3611,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var color = items[i].otros ? 'var(--text-muted)' : 'var(--series-' + ((i % 8) + 1) + ')';
       return '<span class="sw" style="display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text-secondary);">' +
         '<span class="dot" style="width:9px;height:9px;border-radius:2px;background:' + color + ';flex:0 0 9px;"></span>' +
-        '<span>' + escapeHtml(p.label) + ' <span class="subtle">' + fmtPct(p.frac, 1) + '</span></span></span>';
+        '<span>' + escapeHtml(p.label) + ' <span class="subtle">' + fmtPct(p.frac, 2) + '</span></span></span>';
     }).join('') + '</div>';
 
     var tipId = 'tip' + chartUid;
@@ -3624,7 +3629,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         tip.style.left = (ev.clientX - rect.left) + 'px';
         tip.style.top = (ev.clientY - rect.top - 8) + 'px';
         tip.style.opacity = 1;
-        tip.innerHTML = '<strong>' + escapeHtml(p.label) + '</strong><br>' + opts.formatValue(p.value) + ' — ' + fmtPct(p.frac, 1);
+        tip.innerHTML = '<strong>' + escapeHtml(p.label) + '</strong><br>' + opts.formatValue(p.value) + ' — ' + fmtPct(p.frac, 2);
       });
       elm.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
     });
@@ -3700,7 +3705,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         tip.style.top = ((padT + 8) * scale) + 'px';
         tip.style.opacity = 1;
         tip.innerHTML = '<strong>#' + (i + 1) + ' ' + escapeHtml(p.it.label) + '</strong><br>' +
-          fmtInt(p.it.kg) + ' kg — ' + fmtPct(p.it.share, 1) + ' del total<br>acumulado: ' + fmtPct(p.it.cum, 1);
+          fmtInt(p.it.kg) + ' kg — ' + fmtPct(p.it.share, 2) + ' del total<br>acumulado: ' + fmtPct(p.it.cum, 2);
       });
       elm.addEventListener('mouseleave', function () { tip.style.opacity = 0; });
     });
@@ -4364,7 +4369,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
   function el(id) { return document.getElementById(id); }
 
-  function fmtPctTick(v) { return (v * 100).toLocaleString('es-CL', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'; }
+  function fmtPctTick(v) { return (v * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%'; }
   function fmtKgTick(v) {
     if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1) + 'M';
     if (Math.abs(v) >= 1e3) return Math.round(v / 1e3) + 'k';
@@ -4397,13 +4402,13 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
   function renderKPIs(kpi) {
     var tiles = [
-      { label: 'OEE Planta Global', value: fmtPct(kpi.oeePlantaGlobal, 1), icon: ICON_GAUGE, accent: 'var(--series-5)' },
+      { label: 'OEE Planta Global', value: fmtPct(kpi.oeePlantaGlobal, 2), icon: ICON_GAUGE, accent: 'var(--series-5)' },
       { label: 'Kilos Fabricados', value: fmtInt(kpi.kilosFabricados) + ' kg', icon: ICON_BOX, accent: 'var(--series-1)' },
       { label: 'Chatarra', value: fmtInt(kpi.chatarraKg) + ' kg', icon: ICON_TRASH, accent: 'var(--series-6)' },
       { label: 'Chatarra Máquinas', value: fmtPct(kpi.chatarraMaquinasPct, 2), icon: ICON_GEAR, accent: 'var(--series-8)' },
       { label: 'Chatarra Braner', value: fmtPct(kpi.chatarraBranerPct, 2), icon: ICON_LAYERS, accent: 'var(--series-7)' },
       { label: 'Chatarra Planta', value: fmtPct(kpi.chatarraPlantaPct, 2), icon: ICON_TARGET, accent: 'var(--series-2)' },
-      { label: 'Meta Administrativa', value: fmtPct(kpi.metaChatarra, 1), icon: ICON_TARGET, accent: 'var(--series-4)' },
+      { label: 'Meta Administrativa', value: fmtPct(kpi.metaChatarra, 2), icon: ICON_TARGET, accent: 'var(--series-4)' },
       {
         label: 'Desviación Administrativa', value: fmtSigned(kpi.desviacionChatarra, function (v) { return fmtPct(v, 2); }),
         icon: ICON_TREND, accent: 'var(--series-3)',
@@ -4420,9 +4425,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       }
     ];
     if (kpi.oeeMetaPrograma != null) {
-      tiles.push({ label: 'OEE Meta Programa', value: fmtPct(kpi.oeeMetaPrograma, 1), icon: ICON_TARGET, accent: 'var(--series-5)' });
+      tiles.push({ label: 'OEE Meta Programa', value: fmtPct(kpi.oeeMetaPrograma, 2), icon: ICON_TARGET, accent: 'var(--series-5)' });
       tiles.push({
-        label: 'Desv. OEE Programa', value: fmtSigned(kpi.desviacionOeePrograma, function (v) { return fmtPct(v, 1); }),
+        label: 'Desv. OEE Programa', value: fmtSigned(kpi.desviacionOeePrograma, function (v) { return fmtPct(v, 2); }),
         icon: ICON_TREND, accent: 'var(--series-3)',
         deltaClass: deltaClass(kpi.desviacionOeePrograma, true),
         deltaText: kpi.desviacionOeePrograma == null ? '' : (kpi.desviacionOeePrograma >= 0 ? 'sobre la meta' : 'bajo la meta')
@@ -4444,7 +4449,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       { label: 'Chatarra Tuberas & Perfiladoras', unit: '%', values: resumen.map(function (m) { return m.chatarraMaquinasPct; }), fmt: function (v) { return fmtPct(v, 2); } },
       { label: 'Desorillado Braner', unit: '%', values: resumen.map(function (m) { return m.desorilladoBranerPct; }), fmt: function (v) { return fmtPct(v, 2); } },
       { label: 'Chatarra Planta', unit: '%', values: resumen.map(function (m) { return m.pctChatarraPlanta; }), fmt: function (v) { return fmtPct(v, 2); } },
-      { label: 'OEE Planta Mensual', unit: '%', values: resumen.map(function (m) { return m.oeeMensual; }), fmt: function (v) { return fmtPct(v, 1); } }
+      { label: 'OEE Planta Mensual', unit: '%', values: resumen.map(function (m) { return m.oeeMensual; }), fmt: function (v) { return fmtPct(v, 2); } }
     ];
     renderMonthlyTable(el('resumenTable'), 'Planta ' + anio, rows);
     return resumen;
@@ -4522,12 +4527,12 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       { label: 'Total Producción', unit: 'kg', values: ppto.produccion.map(function (m) { return m.real; }), total: true },
       { label: 'Presupuesto Producción', unit: 'kg', values: ppto.produccion.map(function (m) { return m.ppto; }) },
       { label: 'Desviación Ppto vs Real', unit: 'kg', values: ppto.produccion.map(function (m) { return m.desv; }), fmt: fmtInt },
-      { label: 'Desviación Ppto vs Real', unit: '%', values: ppto.produccion.map(function (m) { return m.desvPct; }), fmt: function (v) { return fmtPct(v, 1); } },
+      { label: 'Desviación Ppto vs Real', unit: '%', values: ppto.produccion.map(function (m) { return m.desvPct; }), fmt: function (v) { return fmtPct(v, 2); } },
       { label: 'Total Chatarra Real', unit: 'kg', values: ppto.chatarra.map(function (m) { return m.real; }), total: true },
       { label: 'Chatarra Planta', unit: '%', values: ppto.chatarra.map(function (m) { return m.pct; }), fmt: function (v) { return fmtPct(v, 2); } },
-      { label: 'Meta Administrativa', unit: '%', values: ppto.chatarra.map(function (m) { return m.metaAdministrativa; }), fmt: function (v) { return fmtPct(v, 1); } },
+      { label: 'Meta Administrativa', unit: '%', values: ppto.chatarra.map(function (m) { return m.metaAdministrativa; }), fmt: function (v) { return fmtPct(v, 2); } },
       { label: 'Desviación Administrativa', unit: '%', values: ppto.chatarra.map(function (m) { return m.desvAdministrativa; }), fmt: function (v) { return fmtPct(v, 2); } },
-      { label: 'Meta Calculada', unit: '%', values: ppto.chatarra.map(function (m) { return m.metaCalculada; }), fmt: function (v) { return fmtPct(v, 1); } },
+      { label: 'Meta Calculada', unit: '%', values: ppto.chatarra.map(function (m) { return m.metaCalculada; }), fmt: function (v) { return fmtPct(v, 2); } },
       { label: 'Desviación Calculada', unit: '%', values: ppto.chatarra.map(function (m) { return m.desvCalculada; }), fmt: function (v) { return fmtPct(v, 2); } }
     ];
     renderMonthlyTable(el('pptoTable'), 'Producción vs. Presupuesto — ' + anio, rows);
@@ -4621,8 +4626,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     if (mesFiltro) {
       var idx = MESES.indexOf(mesFiltro);
       mesCapEl.style.display = 'block';
-      mesCapEl.innerHTML = '<strong>' + mesFiltro + '</strong> — OEE real ' + fmtPct(oeeReal[idx], 1) + ' vs. meta ' + fmtPct(oeeMeta[idx], 1) +
-        ' (desv. ' + fmtSigned(oeeDesv[idx], function (v) { return fmtPct(v, 1); }) + ')' +
+      mesCapEl.innerHTML = '<strong>' + mesFiltro + '</strong> — OEE real ' + fmtPct(oeeReal[idx], 2) + ' vs. meta ' + fmtPct(oeeMeta[idx], 2) +
+        ' (desv. ' + fmtSigned(oeeDesv[idx], function (v) { return fmtPct(v, 2); }) + ')' +
         ' &nbsp;·&nbsp; Calidad Planta real ' + fmtPct(calReal[idx], 2) + ' vs. esperado ' + fmtPct(calEsperado[idx], 2) +
         ' (desv. ' + fmtSigned(calDesvTotal[idx], function (v) { return fmtPct(v, 2); }) + ')';
     } else {
@@ -4665,7 +4670,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var oeeProgramaEl = el('oeeProgramaNote');
     if (oeeProgramaEl) {
       oeeProgramaEl.textContent = oeeProgramaMes != null ?
-        'OEE Meta Programa (planta, según programa de producción de ' + mesNombre + '): ' + fmtPct(oeeProgramaMes, 1) : '';
+        'OEE Meta Programa (planta, según programa de producción de ' + mesNombre + '): ' + fmtPct(oeeProgramaMes, 2) : '';
     }
 
     var noBraner = det.columnas.filter(function (c) { return !c.isBraner; });
@@ -4677,7 +4682,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         { name: 'Calidad', color: 'var(--series-2)', values: noBraner.map(function (c) { return c.calidad; }) },
         { name: 'Ritmo', color: 'var(--series-3)', values: noBraner.map(function (c) { return c.ritmo; }) }
       ],
-      formatValue: function (v) { return fmtPct(v, 0); }, showLabels: true
+      formatValue: function (v) { return fmtPct(v, 2); },
+      formatLabel: function (v) { return fmtPct(v, 0); }, showLabels: true
     });
 
     var aporte = STATE.engine.aporteOEEPorMaquina(mesNombre);
@@ -4685,7 +4691,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       categories: aporte.map(function (a) { return machineShortLabel(a.maquina, STATE.data.machineCodes); }),
       values: aporte.map(function (a) { return a.aporte; }),
       targets: aporte.map(function () { return null; }),
-      formatValue: function (v) { return fmtPct(v, 1); }, barColorVar: 'var(--series-5)',
+      formatValue: function (v) { return fmtPct(v, 2); }, barColorVar: 'var(--series-5)',
       seriesLabel: 'Aporte OEE', targetLabel: ''
     });
 
@@ -4714,12 +4720,12 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     }
 
     renderMachineTable(el('detalleMesOEE'), 'Indicadores OEE — ' + mesNombre, D.machines ? D.machines : maquinas.slice(0, -1), [
-      { label: 'Disponibilidad', unit: '%', values: det.columnas.filter(function(c){return !c.isBraner;}).map(function (c) { return c.disponibilidad; }), fmt: function (v) { return fmtPct(v, 1); } },
-      { label: 'Calidad', unit: '%', values: det.columnas.filter(function(c){return !c.isBraner;}).map(function (c) { return c.calidad; }), fmt: function (v) { return fmtPct(v, 1); } },
-      { label: 'Ritmo', unit: '%', values: det.columnas.filter(function(c){return !c.isBraner;}).map(function (c) { return c.ritmo; }), fmt: function (v) { return fmtPct(v, 1); } },
-      { label: 'OEE Máquina', unit: '%', values: det.columnas.filter(function(c){return !c.isBraner;}).map(function (c) { return c.oee; }), fmt: function (v) { return fmtPct(v, 1); }, total: true },
-      { label: 'OEE Meta', unit: '%', values: det.columnas.filter(function(c){return !c.isBraner;}).map(function (c) { return c.oeeMeta; }), fmt: function (v) { return fmtPct(v, 1); } },
-      { label: 'Desviación OEE', unit: '%', values: det.columnas.filter(function(c){return !c.isBraner;}).map(function (c) { return c.desviacionOEE; }), fmt: function (v) { return fmtPct(v, 1); } },
+      { label: 'Disponibilidad', unit: '%', values: det.columnas.filter(function(c){return !c.isBraner;}).map(function (c) { return c.disponibilidad; }), fmt: function (v) { return fmtPct(v, 2); } },
+      { label: 'Calidad', unit: '%', values: det.columnas.filter(function(c){return !c.isBraner;}).map(function (c) { return c.calidad; }), fmt: function (v) { return fmtPct(v, 2); } },
+      { label: 'Ritmo', unit: '%', values: det.columnas.filter(function(c){return !c.isBraner;}).map(function (c) { return c.ritmo; }), fmt: function (v) { return fmtPct(v, 2); } },
+      { label: 'OEE Máquina', unit: '%', values: det.columnas.filter(function(c){return !c.isBraner;}).map(function (c) { return c.oee; }), fmt: function (v) { return fmtPct(v, 2); }, total: true },
+      { label: 'OEE Meta', unit: '%', values: det.columnas.filter(function(c){return !c.isBraner;}).map(function (c) { return c.oeeMeta; }), fmt: function (v) { return fmtPct(v, 2); } },
+      { label: 'Desviación OEE', unit: '%', values: det.columnas.filter(function(c){return !c.isBraner;}).map(function (c) { return c.desviacionOEE; }), fmt: function (v) { return fmtPct(v, 2); } },
       { label: 'Horas de Atraso / Adelanto', unit: 'h', values: det.columnas.filter(function(c){return !c.isBraner;}).map(function (c) { return c.horasAtraso; }) }
     ]);
   }
@@ -4768,15 +4774,15 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       { label: 'Desviación', unit: '$', values: det.meses.map(function (m) { return m.desviacionCosto; }), fmt: fmtMoney2 }
     ]);
     var rows = [
-      { label: 'Disponibilidad', unit: '%', values: det.meses.map(function (m) { return m.disponibilidad; }), fmt: function (v) { return fmtPct(v, 1); } },
-      { label: 'Calidad', unit: '%', values: det.meses.map(function (m) { return m.calidad; }), fmt: function (v) { return fmtPct(v, 1); } },
-      { label: 'Ritmo', unit: '%', values: det.meses.map(function (m) { return m.ritmo; }), fmt: function (v) { return fmtPct(v, 1); } },
-      { label: 'OEE Máquina', unit: '%', values: det.meses.map(function (m) { return m.oee; }), fmt: function (v) { return fmtPct(v, 1); }, total: true },
-      { label: 'OEE Meta', unit: '%', values: det.meses.map(function (m) { return m.oeeMeta; }), fmt: function (v) { return fmtPct(v, 1); } },
-      { label: 'Desviación OEE', unit: '%', values: det.meses.map(function (m) { return m.desviacionOEE; }), fmt: function (v) { return fmtPct(v, 1); } },
+      { label: 'Disponibilidad', unit: '%', values: det.meses.map(function (m) { return m.disponibilidad; }), fmt: function (v) { return fmtPct(v, 2); } },
+      { label: 'Calidad', unit: '%', values: det.meses.map(function (m) { return m.calidad; }), fmt: function (v) { return fmtPct(v, 2); } },
+      { label: 'Ritmo', unit: '%', values: det.meses.map(function (m) { return m.ritmo; }), fmt: function (v) { return fmtPct(v, 2); } },
+      { label: 'OEE Máquina', unit: '%', values: det.meses.map(function (m) { return m.oee; }), fmt: function (v) { return fmtPct(v, 2); }, total: true },
+      { label: 'OEE Meta', unit: '%', values: det.meses.map(function (m) { return m.oeeMeta; }), fmt: function (v) { return fmtPct(v, 2); } },
+      { label: 'Desviación OEE', unit: '%', values: det.meses.map(function (m) { return m.desviacionOEE; }), fmt: function (v) { return fmtPct(v, 2); } },
       { label: 'Horas de Atraso / Adelanto', unit: 'h', values: det.meses.map(function (m) { return m.horasAtraso; }) }
     ];
-    renderMonthlyTable(el('detalleAnioOEE'), 'OEE — ' + maquina + (det.oeePonderado != null ? ' (ponderado ' + fmtPct(det.oeePonderado, 1) + ')' : ''), rows);
+    renderMonthlyTable(el('detalleAnioOEE'), 'OEE — ' + maquina + (det.oeePonderado != null ? ' (ponderado ' + fmtPct(det.oeePonderado, 2) + ')' : ''), rows);
   }
 
   function renderEspesor(anio) {
@@ -4803,8 +4809,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     renderStackedBarChart(el('chartEspesorStack'), { categories: MESES_ABBR, series: chartSeries });
 
     // a thickness not produced in a month is "-", not a noisy 0
-    var pctRows = esp.pctTable.map(function (r) { return { label: r.espesor + ' mm', values: r.meses.map(zeroToNull), fmt: function (v) { return fmtPct(v, 1); } }; });
-    pctRows.push({ label: 'Total', values: esp.totalPorMes.map(function (v) { return v ? 1 : null; }), fmt: function (v) { return fmtPct(v, 0); }, total: true });
+    var pctRows = esp.pctTable.map(function (r) { return { label: r.espesor + ' mm', values: r.meses.map(zeroToNull), fmt: function (v) { return fmtPct(v, 2); } }; });
+    pctRows.push({ label: 'Total', values: esp.totalPorMes.map(function (v) { return v ? 1 : null; }), fmt: function (v) { return fmtPct(v, 2); }, total: true });
     renderMonthlyTable(el('espesorPctTable'), 'Producción por Espesor (%) — ' + anio, pctRows);
 
     var kgRows = esp.kgTable.map(function (r) { return { label: r.espesor + ' mm', values: r.meses.map(zeroToNull) }; });
@@ -4961,7 +4967,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       return '<td class="' + (d < 0 ? 'neg' : 'pos') + '">' + fmtSigned(d, fmt) + '</td>';
     }
     var pct2 = function (v) { return fmtPct(v, 2); };
-    var pct1 = function (v) { return fmtPct(v, 1); };
+    var pct1 = function (v) { return fmtPct(v, 2); };
     // soft dashed rule between the Chatarra / OEE / Costo-por-kg column groups
     var html = '<table class="wide"><thead><tr><th>Máquina</th>' +
       '<th>Chatarra</th><th>Meta Admin.</th><th>Desv. Admin.</th><th>Meta Calc.</th><th>Desv. Calc.</th><th>Estado</th>' +
@@ -5005,7 +5011,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
   var CRITICOS_FMT = {
     kg: fmtInt,
-    pct1: function (v) { return fmtPct(v, 1); },
+    pct1: function (v) { return fmtPct(v, 2); },
     pct2: function (v) { return fmtPct(v, 2); },
     money: fmtMoney,
     moneypkg: fmtMoney2
@@ -5054,7 +5060,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           html += '<tr>' +
             '<td>' + (it.maquina === 'Planta' ? 'Planta' : escapeHtml(machineShortLabel(it.maquina, STATE.data.machineCodes)) + ' <span class="subtle">' + escapeHtml(it.maquina) + '</span>') + '</td>' +
             tdv(it.real, fmt) + tdv(it.meta, fmt) +
-            '<td class="' + (it.gravedad > 0 ? 'neg' : 'pos') + '">' + fmtSigned(it.desvRel, function (v) { return fmtPct(v, 1); }) + '</td>' +
+            '<td class="' + (it.gravedad > 0 ? 'neg' : 'pos') + '">' + fmtSigned(it.desvRel, function (v) { return fmtPct(v, 2); }) + '</td>' +
             '<td>' + CRITICOS_PILL[it.estado] + '</td></tr>';
         });
         html += '</tbody></table></div>';
@@ -5083,12 +5089,12 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       html += '<tr>' +
         '<td>' + escapeHtml(machineShortLabel(m.maquina, STATE.data.machineCodes)) + ' <span class="subtle">' + escapeHtml(m.maquina) + '</span></td>' +
         tdv(m.kg, fmtInt) + tdv(m.proy, fmtInt) + tdv(m.ppto, fmtInt) +
-        tdv(m.desvPct, function (v) { return fmtSigned(v, function (x) { return fmtPct(x, 1); }); }) +
+        tdv(m.desvPct, function (v) { return fmtSigned(v, function (x) { return fmtPct(x, 2); }); }) +
         '<td>' + pill(m.estado) + '</td></tr>';
     });
     html += '<tr class="total"><td>Total Planta</td>' +
       tdv(p.total.kg, fmtInt) + tdv(p.total.proy, fmtInt) + tdv(p.total.ppto, fmtInt) +
-      tdv(p.total.desvPct, function (v) { return fmtSigned(v, function (x) { return fmtPct(x, 1); }); }) +
+      tdv(p.total.desvPct, function (v) { return fmtSigned(v, function (x) { return fmtPct(x, 2); }); }) +
       '<td>' + pill(p.total.estado) + '</td></tr>';
     html += '</tbody></table>';
     el('proyeccionTable').innerHTML = html;
@@ -5103,7 +5109,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   function proyDeltaSub(desvPct, favorableLabel, contraLabel) {
     if (desvPct == null) return null;
     var good = desvPct >= 0;
-    return { cls: good ? 'good' : 'bad', text: fmtSigned(desvPct, function (v) { return fmtPct(v, 1); }) + ' ' + (good ? favorableLabel : contraLabel) };
+    return { cls: good ? 'good' : 'bad', text: fmtSigned(desvPct, function (v) { return fmtPct(v, 2); }) + ' ' + (good ? favorableLabel : contraLabel) };
   }
 
   function renderProyecciones(anio) {
@@ -5151,7 +5157,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       proyChip('Producción proyectada', fmtKgTick(prodCierreVal) + ' kg', proyDeltaSub(desvMesProd, 'sobre ppto', 'bajo ppto'), 'var(--series-1)'),
       proyChip('Chatarra', chatCierreVal != null ? fmtPct(chatCierreVal, 2) : '-', proyDeltaSub(desvMesChat, 'bajo meta', 'sobre meta'), 'var(--series-6)'),
       proyChip('Costo/kg', costoCierreVal != null ? fmtMoney2(costoCierreVal) : '-', proyDeltaSub(desvMesCosto, 'bajo ppto', 'sobre ppto'), 'var(--series-3)'),
-      proyChip('OEE', oeeCierreVal != null ? fmtPct(oeeCierreVal, 1) : '-', proyDeltaSub(desvMesOee, 'sobre meta', 'bajo meta'), 'var(--series-2)')
+      proyChip('OEE', oeeCierreVal != null ? fmtPct(oeeCierreVal, 2) : '-', proyDeltaSub(desvMesOee, 'sobre meta', 'bajo meta'), 'var(--series-2)')
     ].join('');
 
     var a = pa.anual;
@@ -5159,7 +5165,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       proyChip('Producción proyectada al año', fmtKgTick(a.prodKg) + ' kg', proyDeltaSub(a.desvProdPct, 'sobre ppto', 'bajo ppto'), 'var(--series-1)'),
       proyChip('Chatarra proyectada', a.chatPct != null ? fmtPct(a.chatPct, 2) : '-', proyDeltaSub(a.desvChatPct, 'bajo meta', 'sobre meta'), 'var(--series-6)'),
       proyChip('Costo/kg proyectado', a.costoKg != null ? fmtMoney2(a.costoKg) : '-', proyDeltaSub(a.desvCostoPct, 'bajo ppto', 'sobre ppto'), 'var(--series-3)'),
-      proyChip('OEE proyectado', a.oee != null ? fmtPct(a.oee, 1) : '-', proyDeltaSub(a.desvOeePct, 'sobre meta', 'bajo meta'), 'var(--series-2)')
+      proyChip('OEE proyectado', a.oee != null ? fmtPct(a.oee, 2) : '-', proyDeltaSub(a.desvOeePct, 'sobre meta', 'bajo meta'), 'var(--series-2)')
     ].join('');
 
     renderForecastChart(el('chartProyProduccion'), {
@@ -5221,7 +5227,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     });
     renderRankedBarChart(el('chartInsumosSobrecosto'), {
       items: rk.topSobrecosto.map(function (r) { return { label: r.articulo, value: r.overrun }; }),
-      formatValue: function (v) { return fmtPct(v, 0); }, colorVar: 'var(--series-6)'
+      formatValue: function (v) { return fmtPct(v, 2); }, colorVar: 'var(--series-6)'
     });
 
     // Cada categoría agrupa: su tendencia anual real vs. presupuesto (comparación real
@@ -5256,7 +5262,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       if (pct == null) return '<td class="dash">-</td>';
       var cls = judged ? (pct < 0 ? 'good' : (pct > 0 ? 'bad' : 'neutral')) : 'neutral';
       var arrow = pct < 0 ? '▼' : (pct > 0 ? '▲' : '—');
-      return '<td class="delta ' + cls + '">' + arrow + ' ' + fmtPct(Math.abs(pct), 1) + '</td>';
+      return '<td class="delta ' + cls + '">' + arrow + ' ' + fmtPct(Math.abs(pct), 2) + '</td>';
     }
 
     var html = '<table class="wide"><thead><tr>' +
@@ -5301,7 +5307,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     if (data.promedioAnual != null) parts.push('promedio anual: ' + fmtMoney(data.promedioAnual));
     if (mesActualRow && mesActualRow.real != null) parts.push(mesRef + ': ' + fmtMoney(mesActualRow.real));
     if (mesActualRow && mesActualRow.desviacionPct != null) {
-      parts.push('desv. vs ppto: ' + fmtSigned(mesActualRow.desviacionPct, function (v) { return fmtPct(v, 0); }));
+      parts.push('desv. vs ppto: ' + fmtSigned(mesActualRow.desviacionPct, function (v) { return fmtPct(v, 2); }));
     }
     el(capId).textContent = parts.join(' — ');
   }
@@ -5389,7 +5395,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         };
       }),
       metaLine: metaLineValues.some(isNum) ? { name: 'Meta calculada', values: metaLineValues } : null,
-      formatValue: function (v) { return fmtPct(v, 1); },
+      formatValue: function (v) { return fmtPct(v, 2); },
       formatSize: function (v) { return fmtInt(v) + ' kg'; }
     });
     var skuFilterTxt = (STATE.sku.mes ? STATE.sku.mes : 'año completo') + ', ' + (STATE.sku.maquina ? machineShortLabel(STATE.sku.maquina, STATE.data.machineCodes) : 'todas las máquinas');
