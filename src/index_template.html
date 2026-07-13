@@ -682,6 +682,10 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
         <span>OEE y Calidad Planta</span>
       </button>
+      <button class="nav-item" data-tab="kanban">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="1"></rect><rect x="14" y="3" width="7" height="10" rx="1"></rect><rect x="14" y="17" width="7" height="4" rx="1"></rect></svg>
+        <span>Kanban</span>
+      </button>
     </nav>
     <div class="sidebar-foot">
       <div class="updated" id="updatedLabel"></div>
@@ -1146,6 +1150,45 @@ footer.app-footer{color:var(--text-muted);font-size:11.5px;text-align:center;mar
           <h3>Calidad Planta</h3>
           <div class="cap" id="oeeCalidadCalCap">Calidad Planta real vs. esperado</div>
           <div id="chartOeeCalidadCalidad"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TAB: Kanban ================= -->
+    <section id="tab-kanban" class="tab-panel">
+      <div id="kanbanEmpty" class="card" style="display:none;">
+        <p class="cap" style="margin:0;">Este Excel no trae una hoja "Kanban" — agrégala con columnas Código, Descripción, Máquina, Espesor, Stock (UN/KG) y Kanban (UN/KG) para ver este panel.</p>
+      </div>
+      <div id="kanbanContent">
+        <div class="filter-bar">
+          <div class="filter-group" style="flex:1 1 240px;">
+            <span class="fg-label">Buscar código o descripción</span>
+            <input type="text" id="kanbanSearch" class="search-input" placeholder="Ej: 603000306000 o &quot;Perfil L&quot;">
+          </div>
+          <div class="filter-group">
+            <span class="fg-label">Máquina</span>
+            <div class="segmented scroll" id="kanbanMachineSeg"></div>
+          </div>
+          <div class="filter-group">
+            <span class="fg-label">Estado</span>
+            <div class="segmented scroll" id="kanbanEstadoSeg"></div>
+          </div>
+          <div class="filter-group">
+            <span class="fg-label">Espesor</span>
+            <div class="segmented scroll" id="kanbanEspesorSeg"></div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="kpi-grid" id="kanbanChips" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));"></div>
+        </div>
+        <div class="card">
+          <h3>Cobertura de stock por máquina</h3>
+          <div class="cap">kg en stock ÷ kg objetivo Kanban — 100% = en el objetivo</div>
+          <div id="chartKanbanMaquina"></div>
+        </div>
+        <div class="card">
+          <div class="cap" id="kanbanResultCount" style="margin-bottom:10px;"></div>
+          <div id="kanbanTable"></div>
         </div>
       </div>
     </section>

@@ -258,6 +258,41 @@
     return out;
   }
 
+  /* ---- Kanban: foto de stock vs. objetivo de reposición por artículo (hoja
+   * "Kanban", agregada por el usuario) — no tiene mes/año, es una foto puntual
+   * del stock actual, distinto al resto de las hojas que son series de tiempo ---- */
+  function parseKanban(aoa) {
+    var out = [];
+    if (!aoa || aoa.length < 2) return out;
+    var idx = headerIndex(aoa[0]);
+    var cCod = idx['codigo'], cDesc = idx['descripcion'], cClas1 = idx['clasificacionprod1'],
+      cClas2 = idx['clasificacionprod2'], cFactor = idx['factor'], cCalidad = idx['calidad'],
+      cEsp = idx['espesor'], cMaq = idx['maquina'], cNeverOut = idx['neverout'],
+      cUnStock = idx['unstock'], cKgStock = idx['kgstock'], cUnKanban = idx['unkanban'], cKgKanban = idx['kgkanban'];
+    if (cCod == null) return out;
+    for (var r = 1; r < aoa.length; r++) {
+      var row = aoa[r];
+      var codigo = trimStr(row[cCod]);
+      if (!codigo) continue;
+      out.push({
+        codigo: codigo,
+        descripcion: cDesc != null ? trimStr(row[cDesc]) : '',
+        clasif1: cClas1 != null ? trimStr(row[cClas1]) : '',
+        clasif2: cClas2 != null ? trimStr(row[cClas2]) : '',
+        factor: cFactor != null ? toNum(row[cFactor]) : null,
+        calidad: cCalidad != null ? trimStr(row[cCalidad]) : '',
+        espesor: cEsp != null ? toNum(row[cEsp]) : null,
+        maquina: cMaq != null ? trimStr(row[cMaq]) : '',
+        neverOut: cNeverOut != null ? trimStr(row[cNeverOut]) : '',
+        unStock: cUnStock != null ? toNum(row[cUnStock]) : null,
+        kgStock: cKgStock != null ? toNum(row[cKgStock]) : null,
+        unKanban: cUnKanban != null ? toNum(row[cUnKanban]) : null,
+        kgKanban: cKgKanban != null ? toNum(row[cKgKanban]) : null
+      });
+    }
+    return out;
+  }
+
   function parseValesConsumo(aoa) {
     var out = [];
     if (!aoa || aoa.length < 2) return out;
@@ -638,6 +673,7 @@
     var wsPptoInsumos = findSheet(wb, 'pptoinsumos');
     var wsMetas = findSheet(wb, 'metas');
     var wsNoBorrar = findSheet(wb, 'noborrar');
+    var wsKanban = findSheet(wb, 'kanban');
 
     var missing = [];
     if (!wsProduccion) missing.push('Produccion');
@@ -689,6 +725,7 @@
     var pptoVales = pptoValesParsed.total;
     var pptoValesPorCategoria = pptoValesParsed.porCategoria;
     var pptoInsumos = wsPptoInsumos ? parsePptoInsumos(sheetToAOA(wsPptoInsumos)) : [];
+    var kanban = wsKanban ? parseKanban(sheetToAOA(wsKanban)) : [];
     var metasCandidates = [wsMetas, wsNoBorrar].filter(Boolean).map(sheetToAOA);
     var metas = parseMetas(metasCandidates);
     if (!Object.keys(metas.chatarraMeta).length) metas.chatarraMeta = FALLBACK_CHATARRA_META;
@@ -733,7 +770,7 @@
       prodResumenAnu: prodResumenAnu, oee: oee, horasAtraso: horasAtraso,
       pptoProduccion: pptoProduccion, pptoVales: pptoVales, pptoValesPorCategoria: pptoValesPorCategoria, metas: metas,
       rechazoTabla: rechazoTabla, machines: machines, groupMachines: groupMachines, years: years,
-      machineCodes: machineCodes, pptoInsumos: pptoInsumos
+      machineCodes: machineCodes, pptoInsumos: pptoInsumos, kanban: kanban
     };
   }
 
@@ -1939,6 +1976,68 @@
       return { series: series, totalArticles: allKeys.length };
     }
 
+    /* ---- Kanban: stock actual vs. objetivo de reposición por artículo (hoja
+     * "Kanban") — es una foto puntual, no una serie temporal, así que no lleva
+     * filtro de año/mes. "Cobertura" = kg en stock ÷ kg objetivo Kanban: <30%
+     * es quiebre inminente, >150% es sobre-stock. ---- */
+    function kanbanAnalysis(opts) {
+      opts = opts || {};
+      var rows = D.kanban.filter(function (r) {
+        if (!isNum(r.kgKanban) || r.kgKanban <= 0) return false;
+        if (opts.maquina && r.maquina !== opts.maquina) return false;
+        if (opts.espesor != null && r.espesor !== opts.espesor) return false;
+        if (opts.query) {
+          var q = normKey(opts.query);
+          if (normKey(r.codigo).indexOf(q) < 0 && normKey(r.descripcion).indexOf(q) < 0) return false;
+        }
+        return true;
+      });
+      var items = rows.map(function (r) {
+        var cobertura = ratio(r.kgStock, r.kgKanban);
+        var faltanteKg = (isNum(r.kgStock) && r.kgStock < r.kgKanban) ? r.kgKanban - r.kgStock : 0;
+        var excesoKg = (isNum(r.kgStock) && r.kgStock > r.kgKanban) ? r.kgStock - r.kgKanban : 0;
+        var estado;
+        if (cobertura == null) estado = 'sindato';
+        else if (cobertura < 0.3) estado = 'critico';
+        else if (cobertura < 0.7) estado = 'alerta';
+        else if (cobertura <= 1.5) estado = 'ok';
+        else estado = 'exceso';
+        return {
+          codigo: r.codigo, descripcion: r.descripcion, maquina: r.maquina, espesor: r.espesor,
+          calidad: r.calidad, neverOut: r.neverOut,
+          unStock: r.unStock, unKanban: r.unKanban, kgStock: r.kgStock, kgKanban: r.kgKanban,
+          cobertura: cobertura, faltanteKg: faltanteKg, excesoKg: excesoKg, estado: estado,
+          // >0 = falta stock (peor cuanto mayor), <0 = sobre-stock — ordena "quiebre primero"
+          gravedad: cobertura == null ? 0 : (1 - cobertura)
+        };
+      });
+      items.sort(function (a, b) { return b.gravedad - a.gravedad; });
+
+      var resumen = { critico: 0, alerta: 0, ok: 0, exceso: 0 };
+      items.forEach(function (it) { if (resumen[it.estado] != null) resumen[it.estado]++; });
+
+      var porMaquinaMap = {};
+      items.forEach(function (it) {
+        if (!it.maquina) return;
+        if (!porMaquinaMap[it.maquina]) porMaquinaMap[it.maquina] = { maquina: it.maquina, numCob: 0, denCob: 0, faltanteKg: 0, excesoKg: 0, n: 0 };
+        var g = porMaquinaMap[it.maquina];
+        if (it.cobertura != null) { g.numCob += it.cobertura * it.kgKanban; g.denCob += it.kgKanban; }
+        g.faltanteKg += it.faltanteKg; g.excesoKg += it.excesoKg; g.n++;
+      });
+      var porMaquina = Object.keys(porMaquinaMap).map(function (k) {
+        var g = porMaquinaMap[k];
+        return { maquina: g.maquina, cobertura: g.denCob ? g.numCob / g.denCob : null, faltanteKg: g.faltanteKg, excesoKg: g.excesoKg, n: g.n };
+      }).sort(function (a, b) { return (a.cobertura == null ? 1 : a.cobertura) - (b.cobertura == null ? 1 : b.cobertura); });
+
+      var totalKgStock = sum(items.map(function (it) { return it.kgStock; }).filter(isNum));
+      var totalKgKanban = sum(items.map(function (it) { return it.kgKanban; }).filter(isNum));
+
+      return {
+        items: items, resumen: resumen, porMaquina: porMaquina,
+        coberturaGlobal: ratio(totalKgStock, totalKgKanban), totalSkus: items.length
+      };
+    }
+
     return {
       resumenPlanta: resumenPlanta, kpiHeader: kpiHeader, presupuesto: presupuesto,
       detalleMes: detalleMes, detalleAnio: detalleAnio, espesorAnalysis: espesorAnalysis,
@@ -1952,7 +2051,8 @@
       espesorKgFiltrado: espesorKgFiltrado, espesoresDisponibles: espesoresDisponibles,
       skuBuscador: skuBuscador, skuMonthlyTrend: skuMonthlyTrend, skuArticleMonthlyTrend: skuArticleMonthlyTrend,
       chatarraPorEspesorTarget: chatarraPorEspesorTarget,
-      oeeProgramaVal: oeeProgramaVal, calidadPlantaEsperadoVal: calidadPlantaEsperadoVal
+      oeeProgramaVal: oeeProgramaVal, calidadPlantaEsperadoVal: calidadPlantaEsperadoVal,
+      kanbanAnalysis: kanbanAnalysis
     };
   }
 
@@ -3211,7 +3311,8 @@
     insumos: { maquina: null, mes: null },
     criticos: { mes: null, maquina: null, estado: null },
     proyecciones: { maquina: null },
-    oeeCalidad: { maquina: null, mes: null }
+    oeeCalidad: { maquina: null, mes: null },
+    kanban: { maquina: null, estado: null, espesor: null, query: '' }
   };
 
   function el(id) { return document.getElementById(id); }
@@ -3796,6 +3897,36 @@
       STATE.oeeCalidad.mes = val || null;
       renderOeeCalidad(STATE.year);
     });
+
+    // Kanban usa su propio código corto de máquina ("PE5", "TB2"...) tal cual viene
+    // en la hoja — no el nombre completo ("Perfiladora 5") que usa el resto de la
+    // app — así que las opciones salen de los valores reales de esa hoja, no de
+    // skuMachineOptions (que compararía nombres distintos y nunca calzaría).
+    var kanbanMachines = Array.from(new Set(STATE.data.kanban.map(function (r) { return r.maquina; }).filter(Boolean))).sort();
+    var kanbanMachineOptions = [{ value: '', label: 'Todas' }].concat(
+      kanbanMachines.map(function (m) { return { value: m, label: m }; })
+    );
+    renderSegmented('kanbanMachineSeg', kanbanMachineOptions, STATE.kanban.maquina || '', function (val) {
+      STATE.kanban.maquina = val || null;
+      renderKanban();
+    });
+    var kanbanEstadoOptions = [
+      { value: '', label: 'Todos' }, { value: 'critico', label: 'Críticos' },
+      { value: 'alerta', label: 'Alertas' }, { value: 'ok', label: 'En rango' },
+      { value: 'exceso', label: 'Exceso' }
+    ];
+    renderSegmented('kanbanEstadoSeg', kanbanEstadoOptions, STATE.kanban.estado || '', function (val) {
+      STATE.kanban.estado = val || null;
+      renderKanban();
+    });
+    var kanbanEspesores = Array.from(new Set(STATE.data.kanban.map(function (r) { return r.espesor; }).filter(isNum))).sort(function (a, b) { return a - b; });
+    var kanbanEspesorOptions = [{ value: '', label: 'Todos' }].concat(
+      kanbanEspesores.map(function (e) { return { value: String(e), label: e + ' mm' }; })
+    );
+    renderSegmented('kanbanEspesorSeg', kanbanEspesorOptions, STATE.kanban.espesor != null ? String(STATE.kanban.espesor) : '', function (val) {
+      STATE.kanban.espesor = val === '' ? null : parseFloat(val);
+      renderKanban();
+    });
   }
 
   function pickDefaultMonth(anio) {
@@ -4307,6 +4438,67 @@
     el('skuTable').innerHTML = html;
   }
 
+  var KANBAN_PILL = {
+    critico: '<span class="pill bad">Crítico</span>',
+    alerta: '<span class="pill bad" style="opacity:.75;">Alerta</span>',
+    ok: '<span class="pill good">En rango</span>',
+    exceso: '<span class="pill" style="background:color-mix(in srgb, var(--series-1) 20%, transparent);color:var(--series-1);">Exceso</span>',
+    sindato: '<span class="pill pill-muted">Sin dato</span>'
+  };
+  var KANBAN_ROW_LIMIT = 300;
+  function renderKanban() {
+    if (!STATE.data.kanban.length) {
+      el('kanbanEmpty').style.display = 'block';
+      el('kanbanContent').style.display = 'none';
+      return;
+    }
+    el('kanbanEmpty').style.display = 'none';
+    el('kanbanContent').style.display = 'block';
+
+    var kb = STATE.engine.kanbanAnalysis({ maquina: STATE.kanban.maquina, espesor: STATE.kanban.espesor, query: STATE.kanban.query });
+    var chips = [
+      { label: 'SKUs en Kanban', value: fmtInt(kb.totalSkus), accent: 'var(--series-1)' },
+      { label: 'Críticos (<30%)', value: kb.resumen.critico, accent: 'var(--critical)' },
+      { label: 'Alertas (30-70%)', value: kb.resumen.alerta, accent: 'var(--serious)' },
+      { label: 'En rango', value: kb.resumen.ok, accent: 'var(--good)' },
+      { label: 'Exceso (>150%)', value: kb.resumen.exceso, accent: 'var(--series-1)' },
+      { label: 'Cobertura Global', value: fmtPct(kb.coberturaGlobal, 0), accent: 'var(--series-5)' }
+    ];
+    el('kanbanChips').innerHTML = chips.map(function (c) {
+      return '<div class="tile" style="--accent:' + c.accent + ';">' +
+        '<div class="label">' + c.label + '</div>' +
+        '<div class="value">' + c.value + '</div></div>';
+    }).join('');
+
+    renderRankedBarChart(el('chartKanbanMaquina'), {
+      items: kb.porMaquina.map(function (m) { return { label: m.maquina, value: m.cobertura }; }),
+      formatValue: function (v) { return fmtPct(v, 0); }, colorVar: 'var(--series-1)'
+    });
+
+    var estadoFiltro = STATE.kanban.estado || null;
+    var visibles = estadoFiltro ? kb.items.filter(function (it) { return it.estado === estadoFiltro; }) : kb.items;
+    var total = visibles.length;
+    var shown = visibles.slice(0, KANBAN_ROW_LIMIT);
+    el('kanbanResultCount').textContent = total === 0 ? 'Sin resultados' :
+      (total > KANBAN_ROW_LIMIT ? 'Mostrando ' + KANBAN_ROW_LIMIT + ' de ' + fmtInt(total) + ' resultados — refina la búsqueda para ver más' : fmtInt(total) + ' resultado' + (total === 1 ? '' : 's'));
+
+    var pct0 = function (v) { return fmtPct(v, 0); };
+    var html = '<table class="wide"><thead><tr><th>Descripción</th><th>Máquina</th><th>Espesor</th>' +
+      '<th>Stock (kg)</th><th>Kanban (kg)</th><th>Cobertura</th><th>Estado</th></tr></thead><tbody>';
+    shown.forEach(function (it) {
+      html += '<tr>' +
+        '<td>' + escapeHtml(it.descripcion || '-') + '</td>' +
+        '<td>' + escapeHtml(it.maquina || '-') + '</td>' +
+        tdv(it.espesor, function (v) { return fmt1(v) + ' mm'; }) +
+        tdv(it.kgStock, fmtInt) + tdv(it.kgKanban, fmtInt) +
+        tdv(it.cobertura, pct0) +
+        '<td>' + (KANBAN_PILL[it.estado] || '') + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    el('kanbanTable').innerHTML = html;
+  }
+
   function renderAll() {
     var anio = STATE.year;
     var resumen = renderResumen(anio);
@@ -4325,6 +4517,7 @@
     renderSkuBuscador();
     renderProyecciones(anio);
     renderOeeCalidad(anio);
+    renderKanban();
     el('updatedLabel').textContent = 'Developed by Gino Espinosa Morales';
     saveFilters();
   }
@@ -4338,7 +4531,8 @@
     productos: { title: 'Mix de Productos', crumb: 'Producción y chatarra por producto y familia' },
     sku: { title: 'Buscador SKU', crumb: 'Producción y chatarra por SKU, máquina y mes' },
     proyecciones: { title: 'Proyecciones', crumb: 'Cierre de mes y de año proyectado — producción, chatarra, costos y OEE' },
-    oeeCalidad: { title: 'OEE y Calidad Planta', crumb: 'Tendencia mensual de OEE y Calidad Planta vs. meta, por máquina y mes' }
+    oeeCalidad: { title: 'OEE y Calidad Planta', crumb: 'Tendencia mensual de OEE y Calidad Planta vs. meta, por máquina y mes' },
+    kanban: { title: 'Kanban', crumb: 'Stock actual vs. objetivo de reposición, por artículo y máquina' }
   };
 
   function switchTab(tab) {
@@ -4393,7 +4587,8 @@
       localStorage.setItem(LS_FILTERS, JSON.stringify({
         year: STATE.year, month: STATE.month, machine: STATE.machine,
         sku: STATE.sku, productos: STATE.productos, insumos: STATE.insumos,
-        criticos: STATE.criticos, proyecciones: STATE.proyecciones, oeeCalidad: STATE.oeeCalidad, tab: activeTab
+        criticos: STATE.criticos, proyecciones: STATE.proyecciones, oeeCalidad: STATE.oeeCalidad,
+        kanban: STATE.kanban, tab: activeTab
       }));
     } catch (e) { /* almacenamiento no disponible — seguir sin persistir */ }
   }
@@ -4425,6 +4620,17 @@
         maquina: maqOk(f.oeeCalidad.maquina) ? f.oeeCalidad.maquina : null,
         mes: MESES.indexOf(f.oeeCalidad.mes) >= 0 ? f.oeeCalidad.mes : null
       };
+      // Kanban usa su propio código corto de máquina, distinto de data.machines
+      // (ver populateSelectors) — valida contra la lista real de esa hoja
+      if (f.kanban) {
+        var kanbanMaqOk = function (v) { return v == null || data.kanban.some(function (r) { return r.maquina === v; }); };
+        STATE.kanban = {
+          maquina: kanbanMaqOk(f.kanban.maquina) ? f.kanban.maquina : null,
+          estado: ['critico', 'alerta', 'ok', 'exceso'].indexOf(f.kanban.estado) >= 0 ? f.kanban.estado : null,
+          espesor: isNum(f.kanban.espesor) ? f.kanban.espesor : null,
+          query: f.kanban.query || ''
+        };
+      }
       STATE.restored = true; // a saved null machine means the user chose "Todas" — don't re-default it
       return f.tab || null;
     } catch (e) { return null; }
@@ -4441,6 +4647,7 @@
     STATE.machine = data.machines[0];
     restoreFilters(data); // restores machine/mes/etc. filters — the active tab is not restored: every login lands on Resumen
     if (STATE.sku.query) el('skuSearch').value = STATE.sku.query;
+    if (STATE.kanban.query) el('kanbanSearch').value = STATE.kanban.query;
     populateSelectors();
     el('dzScreen').style.display = 'none';
     el('appShell').style.display = 'flex';
@@ -4524,6 +4731,17 @@
       skuSearchTimer = setTimeout(function () {
         STATE.sku.query = val;
         renderSkuBuscador();
+        saveFilters();
+      }, 150);
+    });
+
+    var kanbanSearchTimer = null;
+    el('kanbanSearch').addEventListener('input', function () {
+      var val = this.value;
+      clearTimeout(kanbanSearchTimer);
+      kanbanSearchTimer = setTimeout(function () {
+        STATE.kanban.query = val;
+        renderKanban();
         saveFilters();
       }, 150);
     });
