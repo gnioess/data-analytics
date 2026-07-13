@@ -94,7 +94,10 @@
     return num / den;
   }
   function sum(arr) { var s = 0, has = false; for (var i = 0; i < arr.length; i++) { var v = arr[i]; if (isNum(v)) { s += v; has = true; } } return has ? s : 0; }
-  function isMachineLike(name) { return /^(perfiladora|tubera)[0-9]+$/.test(normKey(name)); }
+  // sin ancla de cierre ($): una máquina nueva puede venir con un sufijo en el
+  // nombre (ej. "Perfiladora 8 (Pinnacle)" → "perfiladora8pinnacle") y sigue
+  // siendo una máquina real cuya producción/chatarra debe sumarse a planta.
+  function isMachineLike(name) { return /^(perfiladora|tubera)[0-9]+/.test(normKey(name)); }
   // ordinary least-squares fit y = a + b*x over {x,y} points — the trend line behind
   // every "forecast" in the Proyecciones tab. Returns null with fewer than 2 points.
   function linreg(points) {
