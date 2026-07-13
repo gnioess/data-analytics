@@ -2958,7 +2958,7 @@
 
   function el(id) { return document.getElementById(id); }
 
-  function fmtPctTick(v) { return Math.round(v * 100) + '%'; }
+  function fmtPctTick(v) { return (v * 100).toLocaleString('es-CL', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'; }
   function fmtKgTick(v) {
     if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1) + 'M';
     if (Math.abs(v) >= 1e3) return Math.round(v / 1e3) + 'k';
