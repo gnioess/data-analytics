@@ -456,19 +456,18 @@
     return { oeeMeta: oeeMeta, chatarraMeta: chatarraMeta };
   }
 
-  function parseRechazoTabla(aoa) {
-    // 'no borrar' style table: espesor, rechazo total (%), material (short code).
+  function rechazoRowsFrom(aoa, headerRow) {
+    // Parses the espesor/rechazo/material table starting right after headerRow.
     // The sheet isn't exclusive to this table — below it (past a blank-row gap)
-    // sits unrelated helper content (dropdown lists, a "Metas OEE" block, etc.)
-    // whose columns can coincidentally parse as numeric espesor/rechazo values.
-    // Stop at the first fully-blank row once we've collected real rows, so that
-    // trailing content never gets folded in as bogus rechazo entries.
+    // often sits unrelated content (dropdown helper lists, a "Metas OEE" block,
+    // etc.) whose columns can coincidentally parse as numeric espesor/rechazo
+    // values. Stop at the first fully-blank row once we've collected real rows,
+    // so that trailing content never gets folded in as bogus rechazo entries.
     var out = [];
-    if (!aoa || aoa.length < 2) return out;
-    var idx = headerIndex(aoa[0]);
+    var idx = headerIndex(aoa[headerRow]);
     var cEsp = idx['espesor'], cRech = idx['rechazototal'], cMat = idx['material'];
     if (cEsp == null || cRech == null || cMat == null) return out;
-    for (var r = 1; r < aoa.length; r++) {
+    for (var r = headerRow + 1; r < aoa.length; r++) {
       var row = aoa[r];
       if (out.length && (!row || row.every(function (v) { return v == null || v === ''; }))) break;
       if (!row) continue;
@@ -477,6 +476,22 @@
       out.push({ espesor: esp, rechazo: rech, material: mat });
     }
     return out;
+  }
+  function parseRechazoTabla(aoa) {
+    // 'no borrar'/'Estandar' style table: espesor, rechazo total (%), material
+    // (short code). Some workbooks keep it at the top of its own sheet (row 0);
+    // others bury it further down inside the "Metas" sheet, below other tables
+    // (e.g. starting around row 29) — so the header is searched for row by row
+    // instead of assumed to be aoa[0].
+    if (!aoa || aoa.length < 2) return [];
+    for (var h = 0; h < aoa.length; h++) {
+      if (!aoa[h]) continue;
+      var idx = headerIndex(aoa[h]);
+      if (idx['espesor'] == null || idx['rechazototal'] == null || idx['material'] == null) continue;
+      var rows = rechazoRowsFrom(aoa, h);
+      if (rows.length) return rows;
+    }
+    return [];
   }
 
   function parsePptoInsumos(aoa) {
@@ -655,7 +670,15 @@
       });
       metas.oeeMeta = fbOee;
     }
-    var rechazoTabla = wsNoBorrar ? parseRechazoTabla(sheetToAOA(wsNoBorrar)) : [];
+    // La tabla vive en su propia hoja ("no borrar"/"Estandar") en algunos Excel;
+    // en otros está enterrada más abajo dentro de la hoja "Metas", así que se
+    // busca en ambas y se usa la primera que dé resultado.
+    var rechazoTabla = [];
+    [wsNoBorrar, wsMetas].some(function (ws) {
+      if (!ws) return false;
+      rechazoTabla = parseRechazoTabla(sheetToAOA(ws));
+      return rechazoTabla.length > 0;
+    });
 
     var machines = oee.machines.length ? oee.machines : Array.from(new Set(
       produccion.filter(function (p) { return isMachineLike(p.maquina); }).map(function (p) { return p.maquina; })
