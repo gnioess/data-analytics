@@ -6059,10 +6059,13 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     driveHint('Descargando "' + name + '" desde Drive…', false, ctx);
     driveSetBusy(true, ctx);
     var isGoogleSheet = mimeType === 'application/vnd.google-apps.spreadsheet';
-    var url = isGoogleSheet
+    // "cache: no-store" + un parámetro que cambia en cada click asegura que esto
+    // nunca sirva una respuesta cacheada por el navegador para esta misma URL —
+    // "Actualizar desde Drive" tiene que traer los bytes reales de ahora, siempre.
+    var url = (isGoogleSheet
       ? 'https://www.googleapis.com/drive/v3/files/' + fileId + '/export?mimeType=application%2Fvnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      : 'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media';
-    fetch(url, { headers: { Authorization: 'Bearer ' + driveAccessToken } })
+      : 'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media') + '&_=' + Date.now();
+    fetch(url, { headers: { Authorization: 'Bearer ' + driveAccessToken }, cache: 'no-store' })
       .then(function (res) {
         if (!res.ok) throw new Error('Google Drive respondió ' + res.status + '.');
         return res.arrayBuffer();
@@ -6070,9 +6073,12 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       .then(function (buf) {
         initFromBuffer(buf, { name: name, ts: Date.now() });
         idbPut('last', { buffer: buf, name: name, ts: Date.now() }).catch(function () { });
-        driveSaveFile({ id: fileId, name: name, mimeType: mimeType });
+        driveSaveFile({ id: fileId, name: name, mimeType: mimeType, ts: Date.now() });
         driveUpdateRefreshUi();
-        driveHint('', false, ctx);
+        // en el sidebar driveUpdateRefreshUi ya deja un mensaje persistente con el
+        // archivo conectado — no lo pises con un hint vacío. En la pantalla de
+        // conexión inicial (dz) sí se limpia, ahí es solo un mensaje de estado.
+        if (ctx !== 'side') driveHint('', false, ctx);
         driveSetBusy(false, ctx);
       })
       .catch(function (err) {
@@ -6089,6 +6095,15 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     if (saved) {
       btn.style.display = '';
       btn.title = saved.name;
+      // igual que dos archivos distintos en Drive pueden compartir el mismo
+      // nombre — mostrar cuándo se leyó por última vez ayuda a notar si "Actualizar
+      // desde Drive" sigue trayendo una copia vieja en vez de la que se acaba de editar
+      var hint = el('driveRefreshHint');
+      if (hint) {
+        var when = saved.ts ? new Date(saved.ts).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+        hint.textContent = 'Conectado a "' + saved.name + '"' + (when ? ' — última lectura ' + when : '');
+        hint.classList.remove('err');
+      }
     } else {
       btn.style.display = 'none';
     }
